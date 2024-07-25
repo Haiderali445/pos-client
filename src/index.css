@@ -1,0 +1,75 @@
+body{
+    font-family: 'Lucida Sans', 'Lucida Sans Regular', 'Lucida Grande', 'Lucida Sans Unicode', Geneva, Verdana, sans-serif;
+}
+
+.item-btn button{
+    width: 200px;
+    margin-top: 20px;
+    background-color: rgb(6, 126, 206);
+    color: white;
+}
+.item-btn button:hover{
+    color: white;
+}
+.Login .ant-form-item-label label {
+    color: white !important;
+  }
+  
+  .Login .ant-form-item .ant-form-item-label {
+    padding-bottom: 5px;
+  }
+  
+  .Login .ant-form-item .ant-form-item-control-input {
+    padding-top: 5px;
+  }
+  .Login .ant-form-item-input input::placeholder {
+    font-weight: bold;
+  }
+  .Login {
+    
+    justify-content: center;
+    align-items: center;
+    height: 50vh;
+    padding-top: 10vh; /* Adjust the padding as needed to center the form */
+  }
+  .Login .ant-form-vertical .ant-form-item-label {
+    padding-bottom: 5px;
+  }
+  .Registore {
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  
+  /* Rest of the styles... */
+  
+  /* Styling for form elements */
+  .Registore .ant-form-vertical .ant-form-item-label label {
+    color: white !important;
+    font-weight: bold; /* Make placeholder text bolder */
+  }
+  
+  .Registore .ant-form-vertical .ant-form-item-label {
+    padding-bottom: 5px;
+  }
+  
+  .Registore .ant-form-vertical .ant-form-item-control-input {
+    padding-top: 5px;
+  }
+
+  
+.category{
+  border:5px  solid black  ;
+  margin-right: 30px ; 
+  padding: 8px;
+  cursor: Pointer;
+}
+
+.category img{
+  margin-left: 10px;
+}
+
+.category-active{
+  border:2px sloid green;
+  background-color: rgba(128, 128, 128, 0.788);
+}
