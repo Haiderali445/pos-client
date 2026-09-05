@@ -27,6 +27,7 @@ import {
   KeyOutlined,
   MinusOutlined,
   PlusOutlined,
+  PrinterOutlined,
   ReloadOutlined,
   SearchOutlined,
   ShoppingCartOutlined,
@@ -181,6 +182,9 @@ const Homepage = () => {
   const [category, setCategory] = useState("all");
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [completedBill, setCompletedBill] = useState(null);
+  const [invoicePromptVisible, setInvoicePromptVisible] = useState(false);
+  const [invoiceVisible, setInvoiceVisible] = useState(false);
 
   const searchRef = useRef(null);
   const [form] = Form.useForm();
@@ -252,9 +256,11 @@ const Homepage = () => {
       values,
       cartItems,
       total,
-      onSuccess: () => {
+      onSuccess: (result) => {
         dispatch({ type: "CLEAR_CART" });
         setCheckoutModalOpen(false);
+        setCompletedBill(result?.data || result);
+        setInvoicePromptVisible(true);
       },
     });
   };
@@ -460,7 +466,7 @@ const Homepage = () => {
           width={360}
           onClose={() => setMobileCartOpen(false)}
           open={mobileCartOpen}
-          bodyStyle={{ padding: 16 }}
+          styles={{ body: { padding: 16 } }}
         >
           <CartContent
             cartItems={cartItems}
@@ -555,6 +561,86 @@ const Homepage = () => {
               </Tag>
             </div>
           </Form>
+        </Modal>
+
+        <Modal
+          open={invoicePromptVisible}
+          title="Sale Completed"
+          onCancel={() => setInvoicePromptVisible(false)}
+          footer={[
+            <Button
+              key="close"
+              onClick={() => {
+                setInvoicePromptVisible(false);
+                setCompletedBill(null);
+              }}
+            >
+              Do Not Print
+            </Button>,
+            <Button
+              key="show"
+              onClick={() => {
+                setInvoicePromptVisible(false);
+                setInvoiceVisible(true);
+              }}
+            >
+              Show Invoice
+            </Button>,
+            <Button
+              key="print"
+              type="primary"
+              icon={<PrinterOutlined />}
+              onClick={() => {
+                setInvoicePromptVisible(false);
+                setInvoiceVisible(true);
+                window.setTimeout(() => window.print(), 0);
+              }}
+            >
+              Print Invoice
+            </Button>,
+          ]}
+        >
+          <p>Would you like to view or print the invoice for this sale?</p>
+        </Modal>
+
+        <Modal
+          open={invoiceVisible}
+          title="Invoice Preview"
+          onCancel={() => setInvoiceVisible(false)}
+          footer={[
+            <Button key="close" onClick={() => setInvoiceVisible(false)}>
+              Close
+            </Button>,
+            <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>
+              Print Invoice
+            </Button>,
+          ]}
+        >
+          {completedBill && (
+            <div className="checkout-invoice-preview">
+              <div className="checkout-invoice-brand">HARDWARE POINT</div>
+              <div className="checkout-invoice-subtitle">Main Retail Terminal, Branch 01</div>
+              <div className="checkout-invoice-rule" />
+              <div className="checkout-invoice-meta">
+                <span>Date: {new Date(completedBill.date || Date.now()).toLocaleString()}</span>
+                <span>Payment: {completedBill.paymentMethod || "cash"}</span>
+                {completedBill.costumerName && <span>Customer: {completedBill.costumerName}</span>}
+                {completedBill.costumerNumber && <span>Phone: {completedBill.costumerNumber}</span>}
+              </div>
+              <div className="checkout-invoice-items">
+                {(completedBill.cartItems || []).map((item) => (
+                  <div className="checkout-invoice-item" key={item._id}>
+                    <span>{item.name} x {item.quantity}</span>
+                    <strong>PKR {(Number(item.salePrice) * Number(item.quantity)).toFixed(2)}</strong>
+                  </div>
+                ))}
+              </div>
+              <div className="checkout-invoice-total">
+                <span>Total</span>
+                <strong>PKR {Number(completedBill.totalAmount || 0).toFixed(2)}</strong>
+              </div>
+            </div>
+          )}
         </Modal>
       </div>
     </DefaultLayout>

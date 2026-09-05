@@ -16,7 +16,6 @@ import {
   BarChartOutlined,
   DollarOutlined,
   FallOutlined,
-  PieChartOutlined,
   ReloadOutlined,
   RiseOutlined,
   ShoppingOutlined,
@@ -47,7 +46,7 @@ import {
 
 const { Title, Text } = Typography;
 
-const PIE_COLORS = ["#183c35", "#f2c14e", "#2d8a55", "#4096ff", "#cf1322"];
+const FINANCIAL_COLORS = ["#0f766e", "#2563eb", "#f59e0b", "#dc2626"];
 
 export default function StockPage() {
   const { data: products = [], isLoading: pLoading, isError: pError, refetch: pRefetch } = useProducts();
@@ -104,7 +103,12 @@ export default function StockPage() {
       key: "stock",
       render: (stock, record) => {
         const status = getStockStatus(stock, record.reorderLevel);
-        return <Tag color={status.color}>{status.label}</Tag>;
+        return (
+          <Space size={8}>
+            <strong>{Math.max(0, Number(stock) || 0)} units</strong>
+            <Tag color={status.color}>{status.isOutOfStock ? "Depleted" : status.isLowStock ? "Low" : "Healthy"}</Tag>
+          </Space>
+        );
       },
     },
     {
@@ -205,43 +209,54 @@ export default function StockPage() {
 
         {/* Visual Charts */}
         <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
-          <Col xs={24} lg={12}>
+          <Col xs={24} lg={12} style={{ minWidth: 0 }}>
             <Card
               title={
                 <Space>
-                  <PieChartOutlined style={{ color: "#183c35" }} />
-                  <span>Financial Breakdown Overview</span>
+                  <DollarOutlined style={{ color: "#183c35" }} />
+                  <span>Financial Breakdown</span>
                 </Space>
               }
               bordered={false}
               style={{ boxShadow: "0 4px 16px rgba(24,60,53,0.05)", borderRadius: 12, height: "100%" }}
             >
-              <div style={{ width: "100%", height: 280 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie
-                      data={financialPieData}
-                      dataKey="value"
-                      nameKey="name"
-                      cx="50%"
-                      cy="50%"
-                      outerRadius={90}
-                      innerRadius={45}
-                      paddingAngle={4}
-                    >
-                      {financialPieData.map((_, index) => (
-                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip formatter={(val) => formatCurrency(val)} />
-                    <Legend verticalAlign="bottom" height={36} />
-                  </PieChart>
-                </ResponsiveContainer>
+              <div style={{ width: "100%", minWidth: 0, height: 280, minHeight: 280 }}>
+                {financialPieData.some((entry) => entry.value > 0) ? (
+                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                    <PieChart>
+                      <Pie
+                        data={financialPieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="44%"
+                        innerRadius={58}
+                        outerRadius={92}
+                        paddingAngle={2}
+                        stroke="#ffffff"
+                        strokeWidth={2}
+                      >
+                        {financialPieData.map((_, index) => (
+                          <Cell key={`financial-pie-${index}`} fill={FINANCIAL_COLORS[index % FINANCIAL_COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip formatter={(val) => formatCurrency(val)} />
+                      <Legend
+                        verticalAlign="bottom"
+                        height={54}
+                        formatter={(value, entry) => `${value}: ${formatCurrency(entry.payload.value)}`}
+                        wrapperStyle={{ fontSize: 11 }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Empty description="No financial data available" />
+                )}
               </div>
             </Card>
           </Col>
 
-          <Col xs={24} lg={12}>
+          <Col xs={24} lg={12} style={{ minWidth: 0 }}>
             <Card
               title={
                 <Space>
@@ -252,15 +267,19 @@ export default function StockPage() {
               bordered={false}
               style={{ boxShadow: "0 4px 16px rgba(24,60,53,0.05)", borderRadius: 12, height: "100%" }}
             >
-              <div style={{ width: "100%", height: 280 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={categoryChartData} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
-                    <XAxis dataKey="category" tick={{ fontSize: 11 }} />
-                    <YAxis tick={{ fontSize: 11 }} />
-                    <RechartsTooltip formatter={(val) => formatCurrency(val)} />
-                    <Bar dataKey="valuation" fill="#183c35" radius={[6, 6, 0, 0]} name="Valuation (PKR)" />
-                  </BarChart>
-                </ResponsiveContainer>
+              <div style={{ width: "100%", minWidth: 0, height: 280, minHeight: 280 }}>
+                {categoryChartData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={280} minWidth={0}>
+                    <BarChart data={categoryChartData} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
+                      <XAxis dataKey="category" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <RechartsTooltip formatter={(val) => formatCurrency(val)} />
+                      <Bar dataKey="valuation" fill="#183c35" radius={[6, 6, 0, 0]} name="Valuation (PKR)" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <Empty description="No stock data available" />
+                )}
               </div>
             </Card>
           </Col>

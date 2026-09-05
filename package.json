@@ -1,5 +1,4 @@
 {
-  "proxy": "http://localhost:8080",
   "name": "client",
   "version": "0.1.0",
   "private": true,
@@ -17,7 +16,6 @@
     "react-dom": "^18.2.0",
     "react-redux": "^9.0.4",
     "react-router-dom": "^6.21.1",
-    "react-scripts": "5.0.1",
     "recharts": "^2.12.6",
     "redux": "^5.0.1",
     "redux-devtools-extension": "^2.13.9",
@@ -25,10 +23,9 @@
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
   },
   "eslintConfig": {
     "extends": [
@@ -47,5 +44,10 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^6.1.1",
+    "vite": "^8.2.2",
+    "vite-plugin-svgr": "^5.2.0"
   }
 }

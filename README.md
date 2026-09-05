@@ -2,7 +2,7 @@
 
 # 💻 Hardware Point POS — Frontend Client Architecture & Guide
 
-### Enterprise React 18 Single-Page Application with Ant Design v5, TanStack Query & 4-Tier Clean Architecture
+### Enterprise React 18 Single-Page Application with Vite, Ant Design v5, TanStack Query & 4-Tier Clean Architecture
 
 <p>
   <img src="https://img.shields.io/badge/React-18.2.0-61DAFB?style=for-the-badge&logo=react&logoColor=white" />
@@ -28,8 +28,8 @@ The client application enforces a strict **4-Tier Clean Architecture** model to 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────────────────────┐
 │                       TIER 1: PRESENTATION LAYER (src/pages/ & src/components/)              │
-│  • Homepage.js · Cartpage.js · Billspage.js · Itempage.js · Stockpage.js · UserManagement.js│
-│  • Defaultlayouts.js (App Shell) · PrivateRoute.js (RBAC Route Guard)                       │
+│  • Homepage.jsx · Cartpage.jsx · Billspage.jsx · Itempage.jsx · Stockpage.jsx · UserManagement.jsx│
+│  • Defaultlayouts.jsx (App Shell) · PrivateRoute.jsx (RBAC Route Guard)                       │
 │  • Responsible EXCLUSIVELY for Ant Design UI layout, local state, and event dispatching     │
 └──────────────────────────────────────────────┬──────────────────────────────────────────────┘
                                                │
@@ -64,7 +64,7 @@ The client application enforces a strict **4-Tier Clean Architecture** model to 
 ```mermaid
 graph TD
     subgraph Presentation["Tier 1: Presentation Layer"]
-        Page["React Page Component\n(e.g., Stockpage.js)"]
+        Page["React Page Component\n(e.g., Stockpage.jsx)"]
     end
 
     subgraph Calculators["Tier 3: Pure Calculators"]
@@ -99,9 +99,9 @@ graph TD
 
 ```mermaid
 graph TD
-    App["App.js (BrowserRouter)"]
-    PR["PrivateRoute.js (Auth & Role Check)"]
-    Shell["Defaultlayouts.js (App Shell)"]
+    App["App.jsx (BrowserRouter)"]
+    PR["PrivateRoute.jsx (Auth & Role Check)"]
+    Shell["Defaultlayouts.jsx (App Shell)"]
     
     Header["Ant Design Header\n(Brand, User Info, Cart Badge, User Mgmt Button)"]
     Sider["Ant Design Desktop Sider\n(Navigation Menu Items)"]
@@ -200,13 +200,14 @@ sequenceDiagram
 ├── 📄 .env.example                               # Client environment template
 ├── 📄 package.json                               # Dependencies & scripts
 ├── 📄 README.md                                  # Frontend architectural guide
+├── 📄 index.html                                  # Vite HTML entrypoint
+├── 📄 vite.config.js                              # Vite, React, SVGR, and API proxy configuration
 ├── 📁 public/
 │   ├── 📄 favicon.ico                            # Hardware Point POS favicon
-│   ├── 📄 index.html                             # Single Page Application HTML shell
 │   └── 📄 manifest.json                          # PWA manifest
 └── 📁 src/
-    ├── 📄 App.js                                 # Route registration & role protection
-    ├── 📄 index.js                               # Root render, QueryClientProvider, RAF ResizeObserver
+    ├── 📄 App.jsx                                # Route registration & role protection
+    ├── 📄 index.jsx                              # Root render, QueryClientProvider, RAF ResizeObserver
     ├── 📄 index.css                              # Base typography & thermal receipt print styles
     ├── 📁 api/
     │   └── 📄 client.js                          # Axios HTTP instance with Bearer JWT interceptor
@@ -237,20 +238,20 @@ sequenceDiagram
     │   ├── 📄 store.js                           # Redux store with thunk middleware
     │   └── 📄 rootReducer.js                     # Cart items, persistent hydration, loading
     ├── 📁 pages/                                 # Tier 1: Pure Presentation Components
-    │   ├── 📄 Homepage.js                        # POS catalog grid & active cashier terminal
-    │   ├── 📄 Cartpage.js                        # Full basket review & tender modal
-    │   ├── 📄 Billspage.js                       # Invoice log & 80mm thermal receipt viewer
-    │   ├── 📄 Itempage.js                        # Inventory directory & product modal CRUD
-    │   ├── 📄 Stockpage.js                       # Business intelligence & Recharts dashboard
-    │   ├── 📄 UserManagement.js                  # Admin operator RBAC management panel
-    │   ├── 📄 Dealerspage.js                     # Wholesale supplier directory & modal
-    │   ├── 📄 Charges.js                         # Store operational expense management
-    │   ├── 📄 LoginForm.js                       # Operator login with token storage
-    │   └── 📄 ChangePasswordForm.js              # Password update security interface
+    │   ├── 📄 Homepage.jsx                       # POS catalog grid & active cashier terminal
+    │   ├── 📄 Cartpage.jsx                       # Full basket review & tender modal
+    │   ├── 📄 Billspage.jsx                      # Invoice log & 80mm thermal receipt viewer
+    │   ├── 📄 Itempage.jsx                       # Inventory directory & product modal CRUD
+    │   ├── 📄 Stockpage.jsx                      # Business intelligence & Recharts dashboard
+    │   ├── 📄 UserManagement.jsx                 # Admin operator RBAC management panel
+    │   ├── 📄 Dealerspage.jsx                    # Wholesale supplier directory & modal
+    │   ├── 📄 Charges.jsx                        # Store operational expense management
+    │   ├── 📄 LoginForm.jsx                      # Operator login with token storage
+    │   └── 📄 ChangePasswordForm.jsx             # Password update security interface
     ├── 📁 components/                            # Shared Visual Components
-    │   ├── 📄 Defaultlayouts.js                  # Responsive sidebar, header, mobile drawer
-    │   ├── 📄 PrivateRoute.js                    # Role-based route guard component
-    │   └── 📄 ItemsList.js                       # Reusable product card item
+    │   ├── 📄 Defaultlayouts.jsx                 # Responsive sidebar, header, mobile drawer
+    │   ├── 📄 PrivateRoute.jsx                   # Role-based route guard component
+    │   └── 📄 ItemsList.jsx                      # Reusable product card item
     ├── 📁 styles/                                # Theme & Layout Stylesheets
     │   ├── 📄 Pos.css                            # Product cards, dock, mobile floating bar
     │   └── 📄 Defaultlayouts.css                 # CSS variables, responsive breakpoints
@@ -294,7 +295,7 @@ Custom design tokens are maintained in [`client/src/styles/Defaultlayouts.css`](
 
 ## 🖨️ 80mm Thermal Receipt ESC/POS Print Specs
 
-Printing is configured with specialized `@media print` rules in [`Billspage.js`](file:///d:/mern-pos/client/src/pages/Billspage.js):
+Printing is configured with specialized `@media print` rules in [`Billspage.jsx`](file:///d:/mern-pos/client/src/pages/Billspage.jsx):
 - Width fixed to **`80mm`** with `0 margin`.
 - All surrounding UI, sidebar, headers, and modal controls are suppressed (`visibility: hidden`).
 - Receipt container centered at top: `position: absolute; left: 50%; transform: translateX(-50%)`.
@@ -302,7 +303,7 @@ Printing is configured with specialized `@media print` rules in [`Billspage.js`]
 
 ---
 
-## ⚙️ Configuration & Available Scripts
+## ⚙️ Vite Configuration & Available Scripts
 
 Create `.env` using `.env.example`:
 ```bash
@@ -311,20 +312,21 @@ cp .env.example .env
 
 | Environment Variable | Description |
 |---|---|
-| `PORT=3000` | Local React development server port |
-| `REACT_APP_API_URL=/api` | Base API route (proxied via `package.json` to `http://localhost:8080`) |
+| `VITE_API_URL=/api` | Base API route; `/api` is proxied by Vite to `http://localhost:8080` |
+
+Vite exposes client environment variables only when they use the `VITE_` prefix. Restart the development server after changing `.env` values. The Vite entrypoint is [`index.html`](index.html), which loads [`src/index.jsx`](src/index.jsx). Files in `public/` are served at the site root and are reserved for static assets such as the manifest and service worker.
 
 ### Command Scripts
 
 ```bash
 # Launch development environment (hot-reloading enabled)
-npm start
-
-# Run unit tests with Jest runner
-npm test
+npm run dev
 
 # Build production-ready, minified bundle
 npm run build
+
+# Preview the production build locally
+npm run preview
 ```
 
 ---
