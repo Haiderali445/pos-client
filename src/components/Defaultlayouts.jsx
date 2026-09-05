@@ -31,7 +31,7 @@ import {
 } from "@ant-design/icons";
 import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ReactComponent as POSLogo } from "../Assests/svg/pos-logo.svg";
+import POSLogo from "../Assests/svg/pos-logo.svg?react";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import "../styles/Defaultlayouts.css";
 

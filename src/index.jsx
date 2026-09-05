@@ -19,7 +19,6 @@ if (typeof window !== "undefined") {
             try {
               callback(entries, observer);
             } catch (e) {
-              // Gracefully handle any dropped frames
             }
           });
         });
@@ -71,5 +70,4 @@ root.render(
 
 reportWebVitals();
 
-// Register Progressive Web App service worker for offline terminal resilience
 serviceWorkerRegistration.register();
