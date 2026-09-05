@@ -17,6 +17,10 @@
 
 ---
 
+📋 Executive Summary:
+
+The Hardware Point POS Frontend Client is an enterprise-grade React 18 single-page application built for hardware and sanitary retail store operations. It features a strict 4-Tier Clean Architecture separating UI presentation, action handlers, pure financial/inventory calculators, and remote API/service layers. Powered by Ant Design v5, TanStack Query v5, and Redux, it delivers robust state management, offline-friendly cart persistence, real-time business intelligence dashboards via Recharts, and hardware-optimized 80mm thermal receipt printing and USB barcode scanning workflows.
+
 ## 🏛️ 4-Tier Frontend Clean Architecture
 
 The client application enforces a strict **4-Tier Clean Architecture** model to prevent the mixing of UI rendering, side-effect mutations, mathematical calculations, and remote HTTP requests.
@@ -78,15 +82,15 @@ graph TD
         Axios["api/client.js\nBearer Token Interceptor"]
     end
 
-    Page -->|"Observes reactive query data"| Query
-    Query -->|"Calls API abstractions"| Svc
-    Svc -->|"Executes HTTP requests"| Axios
-    Page -->|"Passes raw data for computation"| Calc
-    Calc -->>|"Returns pure KPI metrics"| Page
-    Page -->|"Dispatches user submit/delete"| Handler
-    Handler -->|"Calls service mutations"| Svc
-    Handler -->|"Intercepts exceptions"| ErrUtil
-    ErrUtil -->>|"Renders uniform toast"| Page
+    Page -->|Observes reactive query data| Query
+    Query -->|Calls API abstractions| Svc
+    Svc -->|Executes HTTP requests| Axios
+    Page -->|Passes raw data for computation| Calc
+    Calc -->|Returns pure KPI metrics| Page
+    Page -->|Dispatches user submit/delete| Handler
+    Handler -->|Calls service mutations| Svc
+    Handler -->|Intercepts exceptions| ErrUtil
+    ErrUtil -->|Renders uniform toast| Page
 ```
 
 ---
