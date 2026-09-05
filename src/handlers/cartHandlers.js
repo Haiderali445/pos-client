@@ -56,7 +56,11 @@ export async function handleCheckoutSubmission({
     const result = await checkoutMutation.mutateAsync(payload);
 
     triggerCheckoutConfetti();
-    notifySuccess("Sale completed successfully!");
+    if (result?.isOffline) {
+      notifySuccess("Sale completed offline! Saved locally & queued for synchronization.");
+    } else {
+      notifySuccess("Sale completed successfully!");
+    }
 
     if (typeof onSuccess === "function") {
       onSuccess(result);

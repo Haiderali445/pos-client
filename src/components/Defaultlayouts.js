@@ -17,6 +17,8 @@ import {
   CarryOutOutlined,
   DollarOutlined,
   FileTextOutlined,
+  CloudSyncOutlined,
+  DisconnectOutlined,
   KeyOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
@@ -24,11 +26,13 @@ import {
   MenuUnfoldOutlined,
   SafetyCertificateOutlined,
   ShoppingCartOutlined,
+  SyncOutlined,
   TeamOutlined,
 } from "@ant-design/icons";
 import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ReactComponent as POSLogo } from "../Assests/svg/pos-logo.svg";
+import useNetworkStatus from "../hooks/useNetworkStatus";
 import "../styles/Defaultlayouts.css";
 
 const { Header, Sider, Content } = Layout;
@@ -40,6 +44,7 @@ const DefaultLayouts = ({ children }) => {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const { isOnline, pendingCount, isSyncing, syncNow } = useNetworkStatus();
 
   const auth = JSON.parse(localStorage.getItem("auth") || "null");
   const user = auth?.user || {};
@@ -200,8 +205,12 @@ const DefaultLayouts = ({ children }) => {
         />
         <div className="sider-bottom">
           {!collapsed && (
-            <div className="sider-help">
-              <span className="status-dot" /> Live DB Online
+            <div className="sider-help" style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span
+                className="status-dot"
+                style={{ backgroundColor: isOnline ? "#52c41a" : "#faad14" }}
+              />
+              <span>{isOnline ? "Live Cloud Connected" : "Local Terminal Mode"}</span>
             </div>
           )}
           <Tooltip title={collapsed ? "Expand sidebar" : "Collapse sidebar"}>
@@ -276,9 +285,67 @@ const DefaultLayouts = ({ children }) => {
               </Button>
             )}
 
-            <Tag color="success" className="desktop-status-tag">
-              <span className="status-dot" /> Live
-            </Tag>
+            {!isOnline ? (
+              <Tooltip title="Local offline terminal active. All catalog searches and checkouts run locally in IndexedDB.">
+                <Tag
+                  color="warning"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontWeight: 600,
+                    margin: 0,
+                    borderRadius: 6,
+                  }}
+                >
+                  <DisconnectOutlined />
+                  <span>Offline (Local Terminal)</span>
+                  {pendingCount > 0 && (
+                    <Badge
+                      count={pendingCount}
+                      style={{ backgroundColor: "#d46b08", marginLeft: 4 }}
+                    />
+                  )}
+                </Tag>
+              </Tooltip>
+            ) : isSyncing ? (
+              <Tag
+                color="processing"
+                icon={<SyncOutlined spin />}
+                style={{ fontWeight: 600, margin: 0, borderRadius: 6 }}
+              >
+                Syncing {pendingCount} offline sale{pendingCount > 1 ? "s" : ""}...
+              </Tag>
+            ) : pendingCount > 0 ? (
+              <Tooltip title="Click to synchronize offline transactions with cloud MongoDB now">
+                <Button
+                  size="small"
+                  type="dashed"
+                  icon={<CloudSyncOutlined />}
+                  onClick={syncNow}
+                  style={{
+                    borderColor: "#faad14",
+                    color: "#d46b08",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  Sync {pendingCount} Offline Sale{pendingCount > 1 ? "s" : ""}
+                </Button>
+              </Tooltip>
+            ) : (
+              <Tooltip title="Connected to cloud MongoDB database. Local IndexedDB mirror active.">
+                <Tag
+                  color="success"
+                  className="desktop-status-tag"
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6 }}
+                >
+                  <span className="status-dot" /> Live Online
+                </Tag>
+              </Tooltip>
+            )}
 
             <Tooltip title="Review Basket">
               <Badge count={cartItems.reduce((sum, item) => sum + item.quantity, 0)} size="small">
