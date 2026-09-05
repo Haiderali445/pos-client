@@ -54,6 +54,7 @@ export default function Cartpage() {
     new URLSearchParams(location.search).get("checkout") === "1"
   );
   const [completedBill, setCompletedBill] = useState(null);
+  const [invoiceVisible, setInvoiceVisible] = useState(false);
   const [form] = Form.useForm();
 
   // Pure decoupled calculations
@@ -91,9 +92,13 @@ export default function Cartpage() {
       onSuccess: (res) => {
         dispatch({ type: "CLEAR_CART" });
         setCheckoutOpen(false);
-        setCompletedBill(res);
+        setCompletedBill(res?.data || res);
       },
     });
+  };
+
+  const handlePrintInvoice = () => {
+    window.print();
   };
 
   const columns = [
@@ -450,13 +455,13 @@ export default function Cartpage() {
               New Sale
             </Button>,
             <Button
-              key="view"
+              key="invoice"
               type="primary"
-              icon={<PrinterOutlined />}
-              onClick={() => { setCompletedBill(null); navigate("/bills"); }}
+              icon={<CheckCircleOutlined />}
+              onClick={() => setInvoiceVisible(true)}
               style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
             >
-              View Invoices
+              Show Invoice
             </Button>,
           ]}
         >
@@ -467,6 +472,51 @@ export default function Cartpage() {
             <p><strong>Payment Mode:</strong> <Tag color="blue">{completedBill?.paymentMethod}</Tag></p>
             <p><strong>Items:</strong> {completedBill?.cartItems?.length} products</p>
           </Card>
+        </Modal>
+
+        <Modal
+          title="Invoice Preview"
+          open={invoiceVisible}
+          onCancel={() => setInvoiceVisible(false)}
+          width={420}
+          footer={[
+            <Button key="skip" onClick={() => setInvoiceVisible(false)}>
+              Do Not Print
+            </Button>,
+            <Button
+              key="print"
+              type="primary"
+              icon={<PrinterOutlined />}
+              onClick={handlePrintInvoice}
+              style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
+            >
+              Print Invoice
+            </Button>,
+          ]}
+        >
+          <div className="checkout-invoice-preview">
+            <div className="checkout-invoice-brand">HARDWARE POINT</div>
+            <div className="checkout-invoice-subtitle">Main Retail Terminal, Branch 01</div>
+            <div className="checkout-invoice-rule" />
+            <div className="checkout-invoice-meta">
+              <div><strong>Invoice #:</strong> {completedBill?._id || "—"}</div>
+              <div><strong>Date:</strong> {completedBill?.date ? new Date(completedBill.date).toLocaleString() : "—"}</div>
+              <div><strong>Customer:</strong> {completedBill?.costumerName || "Walk-in"}</div>
+              <div><strong>Payment:</strong> {completedBill?.paymentMethod?.toUpperCase() || "—"}</div>
+            </div>
+            <div className="checkout-invoice-items">
+              {completedBill?.cartItems?.map((item) => (
+                <div className="checkout-invoice-item" key={item._id}>
+                  <span>{item.name} × {item.quantity}</span>
+                  <strong>{formatCurrency(Number(item.salePrice) * item.quantity)}</strong>
+                </div>
+              ))}
+            </div>
+            <div className="checkout-invoice-total">
+              <span>Total</span>
+              <strong>{formatCurrency(completedBill?.totalAmount)}</strong>
+            </div>
+          </div>
         </Modal>
       </div>
     </DefaultLayout>

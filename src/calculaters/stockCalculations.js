@@ -8,15 +8,19 @@ export function calculateFinancialMetrics(products = [], bills = [], charges = [
   const safeBills = Array.isArray(bills) ? bills : [];
   const safeCharges = Array.isArray(charges) ? charges : [];
 
+  const getStockUnits = (item) => Math.max(0, Number(item?.stock) || 0);
+
   const currentInventoryValuation = safeProducts.reduce(
-    (sum, item) => sum + (Number(item?.purchasePrice) || 0) * (Number(item?.stock) || 0),
+    (sum, item) => sum + (Number(item?.purchasePrice) || 0) * getStockUnits(item),
     0
   );
 
   const potentialRetailValuation = safeProducts.reduce(
-    (sum, item) => sum + (Number(item?.salePrice) || 0) * (Number(item?.stock) || 0),
+    (sum, item) => sum + (Number(item?.salePrice) || 0) * getStockUnits(item),
     0
   );
+
+  const totalStockUnits = safeProducts.reduce((sum, item) => sum + getStockUnits(item), 0);
 
   const totalSalesRevenue = safeBills.reduce(
     (sum, bill) => sum + (Number(bill?.totalAmount) || 0),
@@ -43,13 +47,14 @@ export function calculateFinancialMetrics(products = [], bills = [], charges = [
   const profitMargin = totalSalesRevenue > 0 ? (netProfit / totalSalesRevenue) * 100 : 0;
 
   const lowStockItems = safeProducts.filter(
-    (p) => Number(p?.stock) > 0 && Number(p?.stock) <= (Number(p?.reorderLevel) || 5)
+    (p) => getStockUnits(p) > 0 && getStockUnits(p) <= (Number(p?.reorderLevel) || 5)
   );
-  const outOfStockItems = safeProducts.filter((p) => Number(p?.stock) <= 0);
+  const outOfStockItems = safeProducts.filter((p) => getStockUnits(p) <= 0);
 
   return {
     currentInventoryValuation,
     potentialRetailValuation,
+    totalStockUnits,
     totalSalesRevenue,
     totalCogs,
     grossProfit,
@@ -93,7 +98,7 @@ export function formatCurrency(val) {
 }
 
 export function getStockStatus(stock, reorderLevel = 5) {
-  const numStock = Number(stock) || 0;
+  const numStock = Math.max(0, Number(stock) || 0);
   const threshold = Number(reorderLevel) || 5;
   const isOutOfStock = numStock <= 0;
   const isLowStock = !isOutOfStock && numStock <= threshold;
@@ -108,5 +113,5 @@ export function getStockStatus(stock, reorderLevel = 5) {
 }
 
 export function computeItemAssetValue(purchasePrice, stock) {
-  return (Number(purchasePrice) || 0) * (Number(stock) || 0);
+  return (Number(purchasePrice) || 0) * Math.max(0, Number(stock) || 0);
 }
