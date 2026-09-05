@@ -466,7 +466,7 @@ const Homepage = () => {
           width={360}
           onClose={() => setMobileCartOpen(false)}
           open={mobileCartOpen}
-          bodyStyle={{ padding: 16 }}
+          styles={{ body: { padding: 16 } }}
         >
           <CartContent
             cartItems={cartItems}

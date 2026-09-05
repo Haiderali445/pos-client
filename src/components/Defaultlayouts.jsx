@@ -31,7 +31,7 @@ import {
 } from "@ant-design/icons";
 import { useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
-import POSLogo from "../Assests/svg/pos-logo.svg?react";
+import POSLogo from "../Assests/svg/pos-logo.svg?url";
 import useNetworkStatus from "../hooks/useNetworkStatus";
 import "../styles/Defaultlayouts.css";
 
@@ -188,7 +188,11 @@ const DefaultLayouts = ({ children }) => {
             justifyContent: collapsed ? "center" : "flex-start" 
           }}
         >
-          <POSLogo style={{ width: collapsed ? 32 : 36, height: "auto", flexShrink: 0 }} />
+          <img
+            src={POSLogo}
+            alt="Hardware Point"
+            style={{ width: collapsed ? 32 : 36, height: "auto", flexShrink: 0 }}
+          />
           {!collapsed && (
             <div>
               <strong style={{ display: "block", lineHeight: 1.2, whiteSpace: "nowrap" }}>Hardware Point</strong>
@@ -228,11 +232,11 @@ const DefaultLayouts = ({ children }) => {
         placement="left"
         onClose={() => setMobileDrawerOpen(false)}
         open={mobileDrawerOpen}
-        bodyStyle={{ padding: 0, backgroundColor: "#183c35" }}
+        styles={{ body: { padding: 0, backgroundColor: "#183c35" } }}
         width={270}
       >
         <div className="app-brand" style={{ padding: "20px 24px", display: "flex", alignItems: "center", gap: 12 }}>
-          <POSLogo style={{ width: 40, height: "auto" }} />
+          <img src={POSLogo} alt="Hardware Point" style={{ width: 40, height: "auto" }} />
           <div>
             <strong style={{ color: "#fff", display: "block", lineHeight: 1.2 }}>Hardware Point</strong>
             <div style={{ fontSize: 11, color: "#809c8c" }}>Mobile Terminal</div>
