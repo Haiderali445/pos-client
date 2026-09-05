@@ -6,6 +6,7 @@ import App from './App';
 import reportWebVitals from './reportWebVitals';
 import store from './redux/store';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import * as serviceWorkerRegistration from './serviceWorkerRegistration';
 
 // Bulletproof suppression of ResizeObserver loop warnings common in Ant Design responsive tables/drawers
 if (typeof window !== "undefined") {
@@ -69,3 +70,6 @@ root.render(
 );
 
 reportWebVitals();
+
+// Register Progressive Web App service worker for offline terminal resilience
+serviceWorkerRegistration.register();

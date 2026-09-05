@@ -91,7 +91,6 @@ graph TD
     Handler -->|Calls service mutations| Svc
     Handler -->|Intercepts exceptions| ErrUtil
     ErrUtil -->|Renders uniform toast| Page
-
 ```
 
 ---

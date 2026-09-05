@@ -94,10 +94,22 @@ export default function Billspage() {
       title: "Invoice #",
       dataIndex: "_id",
       key: "_id",
-      render: (id) => (
-        <Text code copyable>
-          {id ? id.slice(-8).toUpperCase() : "—"}
-        </Text>
+      render: (id, record) => (
+        <Space direction="vertical" size={2}>
+          <Text code copyable>
+            {id ? (String(id).startsWith("OFFLINE-") ? id.slice(-8).toUpperCase() : id.slice(-8).toUpperCase()) : "—"}
+          </Text>
+          {record.isOffline && record.syncStatus === "pending" && (
+            <Tag color="warning" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
+              ⏳ Pending Sync
+            </Tag>
+          )}
+          {record.isOffline && record.syncStatus === "synced" && (
+            <Tag color="cyan" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
+              ✓ Synced
+            </Tag>
+          )}
+        </Space>
       ),
     },
     {
