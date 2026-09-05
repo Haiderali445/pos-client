@@ -1,132 +1,218 @@
-import React, { useState } from 'react';
-import { Form, Input, Button, Modal, message } from 'antd';
-import { UserOutlined, MailOutlined, LockOutlined } from '@ant-design/icons';
-import axios from 'axios';
-import { useDispatch } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
-import { Link } from 'react-router-dom';
+import React, { useState } from "react";
+import { Alert, Button, Form, Input, Modal, message } from "antd";
+import { ArrowRightOutlined, KeyOutlined, LockOutlined, UserOutlined } from "@ant-design/icons";
+import { Link, useNavigate } from "react-router-dom";
+import apiClient from "../api/client";
+import "../styles/Auth.css";
 
 const LoginForm = () => {
-  const dispatch = useDispatch();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [visible, setVisible] = useState(false);
+  const [resetOpen, setResetOpen] = useState(false);
+  const [error, setError] = useState("");
   const [form] = Form.useForm();
+  const [resetForm] = Form.useForm();
 
   const handleSubmit = async (values) => {
     try {
-      dispatch({ type: "SHOW_LOADING" });
+      setLoading(true);
+      setError("");
+      const response = await apiClient.post("/users/login", {
+        userId: values.userId.trim(),
+        password: values.password,
+      });
 
-      const response = await axios.post("/api/users/login", values);
+      const token = response.data?.token || response.headers["x-auth-token"];
+      const rawUser = response.data?.user || {};
+      const normalizedUserId = (rawUser.userId || values.userId.trim()).toLowerCase();
+      const user = {
+        _id: rawUser._id,
+        userId: normalizedUserId,
+        name: rawUser.name || (normalizedUserId === "admin" ? "haider ali" : normalizedUserId),
+        role: (rawUser.role || (normalizedUserId === "admin" ? "admin" : "cashier")).toLowerCase(),
+        active: rawUser.active !== false,
+      };
 
-      if (response.status === 200) {
-        message.success("User logged in successfully");
-        dispatch({ type: "HIDE_LOADING" });
-        navigate('/');
-      } else {
-        message.error("User not found or incorrect credentials");
-      }
-    } catch (error) {
-      message.error("Incorrect Credential");
-      console.error(error);
+      localStorage.setItem(
+        "auth",
+        JSON.stringify({
+          authenticated: true,
+          token,
+          user,
+        })
+      );
+
+      message.success(`Welcome back, ${user.name}!`);
+      navigate("/", { replace: true });
+    } catch (err) {
+      const status = err.response?.status;
+      const errMsg = err.response?.data?.error;
+      setError(
+        errMsg ||
+          (status === 401
+            ? "Invalid user ID or password."
+            : status >= 500
+            ? "POS server configuration error. Contact administrator."
+            : "Unable to connect to the POS backend server.")
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleForgotPassword = async (values) => {
     try {
       setLoading(true);
-      
-      const response = await axios.post("/api/users/reset-password", values);
-      
+      const response = await apiClient.post("/users/reset-password", values);
+
       if (response.status === 200) {
-        message.success("Password has been updated successfully");
-      } else {
-        message.error("Failed to update the password");
+        message.success("Password has been reset successfully. You can now sign in.");
+        setResetOpen(false);
+        resetForm.resetFields();
       }
-    } catch (error) {
-      message.error("Oops! Something went wrong. Please try again later.");
-      console.error(error);
+    } catch (err) {
+      message.error(err.response?.data?.error || "Failed to reset password. Verify User ID and name.");
     } finally {
       setLoading(false);
-      setVisible(false);
     }
   };
 
   return (
-    <div className='Login'>
-      <section className="vh-50 ">
-        <div className="container py-3 h-60">
-          <div className="row d-flex justify-content-center align-items-center h-100">
-            <div className="col-12 col-md-8 col-lg-6 col-xl-5">
-              <div className="card bg-dark text-white" style={{ borderRadius: "50px", boxShadow: "0px 0px 10px 10px lightgrey" }}>
-                <div className="card-body p-4 text-center">
-                  <div className="mb-md-3 mt-md-2 pb-3">
-                    <h2 className="fw-bold mb-1 text-uppercase">Login</h2>
-                    <p className="text-white-5 mb-3">
-                      Please Enter Your Login and Password!
-                    </p>
-
-                    <Form layout="vertical" onFinish={handleSubmit}>
-                      <Form.Item name="userId" label="USER ID" rules={[{ required: true, message: 'Please enter your user ID!' }]}>
-                        <Input prefix={<UserOutlined />} style={{ width: '100%' }} placeholder='ENTER USER ID' />
-                      </Form.Item>
-
-                      <Form.Item name="password" label="Password" rules={[{ required: true, message: 'Please enter your password!' }]}>
-                        <Input.Password style={{ width: '100%' }} placeholder='ENTER PASSWORD' />
-                      </Form.Item>
-
-                      <p className="small mb-3">
-                        <Button type="link" onClick={() => setVisible(true)}>Forgot password?</Button>
-                      </p>
-
-                      <Form.Item>
-                        <Button type="primary" htmlType="submit" className="btn-lg px-4" style={{ borderRadius: "20px" }}>
-                          Login
-                        </Button>
-                      </Form.Item>
-                    </Form>
-                  </div>
-                  <div>
-                    <p className="mb-0">
-                      Don't have an account?{' '}
-                      <Link to="/Registration" className="text-white-50 fw-bold">
-                        Sign Up
-                      </Link>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+    <main className="auth-shell">
+      <section className="auth-panel auth-panel--brand">
+        <div className="brand-mark">HP</div>
+        <p className="eyebrow">Enterprise POS Platform</p>
+        <h1>Every sale,<br />under control.</h1>
+        <p className="auth-copy">
+          A high-performance command center for inventory, rapid barcode checkout, and real-time store analytics.
+        </p>
+        <div className="auth-status">
+          <span /> Systems operational
         </div>
       </section>
+
+      <section className="auth-panel auth-panel--form">
+        <div className="auth-form-wrap">
+          <p className="eyebrow">Terminal Access</p>
+          <h2>Sign in to Counter</h2>
+          <p className="muted">Use your operator credentials to access the POS terminal.</p>
+
+          {error && <Alert className="auth-alert" type="error" showIcon message={error} style={{ marginBottom: 16 }} />}
+
+          <Form form={form} layout="vertical" onFinish={handleSubmit} requiredMark={false}>
+            <Form.Item
+              name="userId"
+              label="User ID"
+              rules={[{ required: true, message: "Enter your User ID" }]}
+            >
+              <Input
+                size="large"
+                prefix={<UserOutlined style={{ color: "#8c8c8c" }} />}
+                placeholder="e.g. admin or 1001"
+                autoComplete="username"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="password"
+              label="Password"
+              rules={[{ required: true, message: "Enter your password" }]}
+            >
+              <Input.Password
+                size="large"
+                prefix={<LockOutlined style={{ color: "#8c8c8c" }} />}
+                placeholder="Your password"
+                autoComplete="current-password"
+              />
+            </Form.Item>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+              <Button type="link" className="auth-link" style={{ padding: 0 }} onClick={() => setResetOpen(true)}>
+                Forgot password?
+              </Button>
+            </div>
+
+            <Button
+              block
+              size="large"
+              type="primary"
+              htmlType="submit"
+              loading={loading}
+              icon={!loading && <ArrowRightOutlined />}
+              style={{
+                backgroundColor: "#183c35",
+                borderColor: "#183c35",
+                height: 48,
+                fontSize: 15,
+                fontWeight: 700,
+              }}
+            >
+              Enter Workspace
+            </Button>
+          </Form>
+
+          <p className="auth-footer" style={{ marginTop: 24, textAlign: "center", color: "#666" }}>
+            New cashier / operator? <Link to="/registration" style={{ color: "#183c35", fontWeight: 700 }}>Self Register</Link>
+          </p>
+        </div>
+      </section>
+
+      {/* Forgot Password Modal */}
       <Modal
-        title="Forgot Password"
-        visible={visible}
-        onCancel={() => setVisible(false)}
+        title={
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <KeyOutlined style={{ color: "#183c35" }} />
+            <span>Reset Forgotten Password</span>
+          </div>
+        }
+        open={resetOpen}
+        onCancel={() => setResetOpen(false)}
         footer={[
-          <Button key="cancel" onClick={() => setVisible(false)}>
+          <Button key="cancel" onClick={() => setResetOpen(false)}>
             Cancel
           </Button>,
-          <Button key="save" type="primary" loading={loading} onClick={() => form.submit()}>
-            Save
+          <Button
+            key="save"
+            type="primary"
+            loading={loading}
+            onClick={() => resetForm.submit()}
+            style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
+          >
+            Update Password
           </Button>,
         ]}
       >
-        <Form form={form} onFinish={handleForgotPassword}>
-          <Form.Item name="userId" label="User ID" rules={[{ required: true, message: 'Please enter your user ID!' }]}>
-            <Input prefix={<UserOutlined />} style={{ width: '100%' }} placeholder='ENTER USER ID' />
+        <Form form={resetForm} layout="vertical" onFinish={handleForgotPassword}>
+          <Form.Item
+            name="userId"
+            label="User ID"
+            rules={[{ required: true, message: "Enter your User ID" }]}
+          >
+            <Input prefix={<UserOutlined />} placeholder="e.g. admin or 1001" />
           </Form.Item>
-          <Form.Item name="name" label="Name" rules={[{ required: true, message: 'Please enter your name!' }]}>
-            <Input prefix={<UserOutlined />} style={{ width: '100%' }} placeholder='ENTER YOUR NAME' />
+
+          <Form.Item
+            name="name"
+            label="Registered Full Name"
+            rules={[{ required: true, message: "Enter your registered name" }]}
+          >
+            <Input prefix={<UserOutlined />} placeholder="e.g. John Doe" />
           </Form.Item>
-          <Form.Item name="newPassword" label="New Password" rules={[{ required: true, message: 'Please enter your new password!' }]}>
-            <Input.Password prefix={<LockOutlined />} style={{ width: '100%' }} placeholder='ENTER NEW PASSWORD' />
+
+          <Form.Item
+            name="newPassword"
+            label="New Password"
+            rules={[
+              { required: true, message: "Enter your new password" },
+              { min: 6, message: "Password must be at least 6 characters" },
+            ]}
+          >
+            <Input.Password prefix={<LockOutlined />} placeholder="Enter new password" />
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </main>
   );
-}
+};
 
 export default LoginForm;

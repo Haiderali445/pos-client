@@ -1,198 +1,296 @@
-import React, { useEffect, useState } from 'react';
-import axios from 'axios';
-import { PieChart, Pie, Cell, Legend } from 'recharts';
-import { Table, Card, Row, Col, Statistic, Typography } from 'antd';
-import DefaultLayout from '../components/Defaultlayouts';
+import React, { useMemo } from "react";
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  Empty,
+  Row,
+  Space,
+  Statistic,
+  Table,
+  Tag,
+  Typography,
+} from "antd";
+import {
+  BarChartOutlined,
+  DollarOutlined,
+  FallOutlined,
+  PieChartOutlined,
+  ReloadOutlined,
+  RiseOutlined,
+  ShoppingOutlined,
+  WarningOutlined,
+} from "@ant-design/icons";
+import {
+  Bar,
+  BarChart,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip as RechartsTooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import DefaultLayout from "../components/Defaultlayouts";
+import { useBills, useCharges, useProducts } from "../hooks/usePosQueries";
+import {
+  calculateFinancialMetrics,
+  getFinancialPieData,
+  getCategoryChartData,
+  formatCurrency,
+  getStockStatus,
+  computeItemAssetValue,
+} from "../handlers/stockHandlers";
 
-const { Column } = Table;
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
-const StockPage = () => {
-    // State variables
-    const [itemsData, setItemsData] = useState([]);
-    const [billsData, setBillsData] = useState([]);
-    const [chargesData, setChargesData] = useState([]);
-    const [totalCharges, setTotalCharges] = useState(0);
-    const [totalSalePrice, setTotalSalePrice] = useState(0);
-    const [totalProfit, setTotalProfit] = useState(0);
-    const [updatedStockData, setUpdatedStockData] = useState([]);
-    
-    
-    const [initialTotalPurchasePrice, setInitialTotalPurchasePrice] = useState(0);
+const PIE_COLORS = ["#183c35", "#f2c14e", "#2d8a55", "#4096ff", "#cf1322"];
 
-    // Pie chart data
-    const pieChartData = [
-        { name: 'Total Charges', value: totalCharges },
-        { name: 'Total Profit', value: totalProfit },
-        { name: 'Total Sale Price', value: totalSalePrice },
-        { name: 'Total Purchase Price', value: initialTotalPurchasePrice }
-    ];
+export default function StockPage() {
+  const { data: products = [], isLoading: pLoading, isError: pError, refetch: pRefetch } = useProducts();
+  const { data: bills = [], isLoading: bLoading, isError: bError, refetch: bRefetch } = useBills();
+  const { data: charges = [], isLoading: cLoading, isError: cError, refetch: cRefetch } = useCharges();
 
-    // Pie Chart Kay clour add karna ho
-    const COLORS = ['#FF0000', '#0000FF', '#00C49F', '#32CD32'];
+  const isLoading = pLoading || bLoading || cLoading;
+  const isError = pError || bError || cError;
 
-    
-    const fetchData = async () => {
-        try {
-            const [itemsResponse, billsResponse, chargesResponse] = await Promise.all([
-                axios.get('/api/items/get-item'),
-                axios.get('/api/bill/get-bill'),
-                axios.get('/api/charges/get-charges')
-            ]);
+  // Pure decoupled financial & inventory metrics calculation
+  const metrics = useMemo(
+    () => calculateFinancialMetrics(products, bills, charges),
+    [products, bills, charges]
+  );
 
-            setItemsData(itemsResponse.data);
-            setBillsData(billsResponse.data);
-            setChargesData(chargesResponse.data);
+  // Pure decoupled chart data transformations
+  const financialPieData = useMemo(() => getFinancialPieData(metrics), [metrics]);
+  const categoryChartData = useMemo(() => getCategoryChartData(products), [products]);
 
-            calculateTotalCharges(chargesResponse.data);
-            calculateInitialTotalPurchasePrice(itemsResponse.data);
-            calculateTotalSalePriceAndProfit(billsResponse.data);
-            calculateUpdatedStock(itemsResponse.data, billsResponse.data);
-        } catch (error) {
-            console.error('Error fetching data:', error);
-        }
-    };
+  const handleRefetchAll = () => {
+    pRefetch();
+    bRefetch();
+    cRefetch();
+  };
 
-    // Calculate total charges
-    const calculateTotalCharges = (chargesData) => {
-        const totalCharges = chargesData.reduce((acc, charge) => acc + charge.amount, 0);
-        setTotalCharges(totalCharges);
-    };
+  const columns = [
+    {
+      title: "Item Name",
+      dataIndex: "name",
+      key: "name",
+      render: (name) => <strong style={{ color: "#183c35" }}>{name}</strong>,
+    },
+    {
+      title: "Category",
+      dataIndex: "category",
+      key: "category",
+      render: (cat) => <Tag color="blue">{cat || "General"}</Tag>,
+    },
+    {
+      title: "Cost Price",
+      dataIndex: "purchasePrice",
+      key: "purchasePrice",
+      render: (val) => formatCurrency(val),
+    },
+    {
+      title: "Retail Price",
+      dataIndex: "salePrice",
+      key: "salePrice",
+      render: (val) => formatCurrency(val),
+    },
+    {
+      title: "Current Stock",
+      dataIndex: "stock",
+      key: "stock",
+      render: (stock, record) => {
+        const status = getStockStatus(stock, record.reorderLevel);
+        return <Tag color={status.color}>{status.label}</Tag>;
+      },
+    },
+    {
+      title: "Total Asset Value",
+      key: "assetValue",
+      render: (_, record) => (
+        <strong>
+          {formatCurrency(computeItemAssetValue(record.purchasePrice, record.stock))}
+        </strong>
+      ),
+    },
+  ];
 
-    // Calculate initial total purchase price
-    const calculateInitialTotalPurchasePrice = (itemsData) => {
-        let totalPurchasePrice = 0;
+  return (
+    <DefaultLayout>
+      <div style={{ maxWidth: 1200, margin: "0 auto", paddingBottom: 40 }}>
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div>
+            <span style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "#8b9991", fontWeight: 700 }}>
+              Business Intelligence & Inventory
+            </span>
+            <Title level={2} style={{ margin: "2px 0 0", color: "#183c35" }}>
+              Stock & Sales Analytics
+            </Title>
+          </div>
+          <Button icon={<ReloadOutlined />} onClick={handleRefetchAll} loading={isLoading}>
+            Recalculate
+          </Button>
+        </div>
 
-        // Calculate the total purchase price of all items
-        itemsData.forEach(item => {
-            totalPurchasePrice += item.purchasePrice * item.stock;
-        });
+        {isError && (
+          <Alert
+            type="error"
+            showIcon
+            message="Failed to load analytics data"
+            action={<Button size="small" onClick={handleRefetchAll}>Retry</Button>}
+            style={{ marginBottom: 20 }}
+          />
+        )}
 
-        // Set the initial total purchase price and keep it constant
-        setInitialTotalPurchasePrice(totalPurchasePrice);
-    };
-
-    // Calculate total sale price and total profit based on bills data
-    const calculateTotalSalePriceAndProfit = (billsData) => {
-        let totalSalePrice = 0;
-        let totalProfit = 0;
-
-        // Iterate through each bill
-        billsData.forEach(bill => {
-            // Iterate through each item in the bill
-            bill.cartItems.forEach(item => {
-                // Calculate total sale price for each item
-                const itemTotalSalePrice = item.salePrice * item.quantity;
-
-                // Calculate total purchase price for each item
-                const itemTotalPurchasePrice = item.purchasePrice * item.quantity;
-
-                // Calculate profit for each item
-                const itemProfit = itemTotalSalePrice - itemTotalPurchasePrice;
-
-                // Add item profit to total profit
-                totalProfit += itemProfit;
-
-                // Add item total sale price to total sale price
-                totalSalePrice += itemTotalSalePrice;
-            });
-        });
-
-        
-        setTotalSalePrice(totalSalePrice);
-        setTotalProfit(totalProfit);
-    };
-
-    // Calculate updated stock based on bills data
-    const calculateUpdatedStock = (itemsData, billsData) => {
-        // Map to track total quantity sold per item
-        const totalSoldPerItem = {};
-
-        // Calculate total quantity sold per item
-        billsData.forEach(bill => {
-            bill.cartItems.forEach(cartItem => {
-                const { _id, quantity } = cartItem;
-                totalSoldPerItem[_id] = (totalSoldPerItem[_id] || 0) + quantity;
-            });
-        });
-
-        // Calculate updated stock for each item
-        const updatedStockData = itemsData.map(item => {
-            // Calculate quantity sold for this item
-            const totalSold = totalSoldPerItem[item._id] || 0;
-
-            // Calculate updated stock
-            const updatedStock = item.stock - totalSold;
-
-            // Return updated item data with updated stock
-            return {
-                ...item,
-                updatedStock
-            };
-        });
-
-        // Update state with the updated stock data
-        setUpdatedStockData(updatedStockData);
-    };
-
-    // Calculate remaining stock item price based on updated stock data
-    const calculateRemainingStockValue = () => {
-        return updatedStockData.reduce((total, item) => {
-            return total + item.purchasePrice * item.updatedStock;
-        }, 0);
-    };
-
-    useEffect(() => {
-        fetchData();
-    }, []);
-
-    return (
-        <DefaultLayout>
-            <Card>
-                <Row justify="center">
-                    <Col span={24}>
-                        <Title level={2}><h1>STOCK LIST</h1></Title>
-                    </Col>
-                    <Col span={12} style={{ paddingRight: 20 }}>
-                        <Statistic title="Total Purchase Price of All Items" value={`PKR:${initialTotalPurchasePrice.toFixed(2)}`} />
-                        <Statistic title="Total Sales of All Items" value={`PKR:${totalSalePrice.toFixed(2)}`} />
-                        <Statistic title="Total Charges" value={`PKR:${totalCharges.toFixed(2)}`} />
-                        <Statistic title="Total Profit" value={`PKR:${totalProfit.toFixed(2)}`} />
-                        <Statistic title="Rest Stock Item Price" value={`PKR:${calculateRemainingStockValue().toFixed(2)}`} /> {/* Rest Stock Item Price */}
-                    </Col>
-
-                    <Col span={12}>
-                        <PieChart width={200} height={250}>
-                            <Pie data={pieChartData}
-                                dataKey="value"
-                                nameKey="name"
-                                outerRadius={80}
-                                fill="#8884d8">
-                                {pieChartData.map((entry, index) => (
-                                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                                ))}
-                            </Pie>
-                            <Legend />
-                        </PieChart>
-                    </Col>
-                </Row>
-
-                <Col span={24}>
-                    <Table dataSource={updatedStockData} rowKey="_id">
-                        <Column title="Item Name" dataIndex="name" key="name" />
-                        <Column title="Category" dataIndex="category" key="category" />
-                        <Column title="Purchase Price" dataIndex="purchasePrice" key="purchasePrice" render={value => `PKR:${value.toFixed(2)}`} />
-                        <Column title="Sale Price" dataIndex="salePrice" key="salePrice" render={value => `PKR:${value.toFixed(2)}`} />
-                        <Column title="Current Stock" dataIndex="updatedStock" key="updatedStock" />
-                        <Column title="Total Purchase Price" key="totalPurchasePrice" render={(item) => {
-                            const totalPurchasePrice = item.purchasePrice * item.updatedStock;
-                            return `PKR:${totalPurchasePrice.toFixed(2)}`;
-                        }} />
-                    </Table>
-                </Col>
+        {/* Core Financial KPIs */}
+        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+          <Col xs={24} sm={12} lg={6}>
+            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+              <Statistic
+                title="Current Stock Valuation (Cost)"
+                value={formatCurrency(metrics.currentInventoryValuation)}
+                prefix={<ShoppingOutlined style={{ color: "#183c35" }} />}
+              />
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                Potential Retail: {formatCurrency(metrics.potentialRetailValuation)}
+              </Text>
             </Card>
-        </DefaultLayout>
-    );
-};
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+              <Statistic
+                title="Total Sales Revenue"
+                value={formatCurrency(metrics.totalSalesRevenue)}
+                valueStyle={{ color: "#2d8a55" }}
+                prefix={<RiseOutlined />}
+              />
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                COGS: {formatCurrency(metrics.totalCogs)}
+              </Text>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+              <Statistic
+                title="Gross Profit"
+                value={formatCurrency(metrics.grossProfit)}
+                valueStyle={{ color: "#183c35" }}
+                prefix={<DollarOutlined />}
+              />
+              <Text type="secondary" style={{ fontSize: 11 }}>
+                Store Expenses: {formatCurrency(metrics.totalExpenses)}
+              </Text>
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+              <Statistic
+                title="Net Profit (After Expenses)"
+                value={formatCurrency(metrics.netProfit)}
+                valueStyle={{ color: metrics.netProfit >= 0 ? "#2d8a55" : "#cf1322" }}
+                prefix={metrics.netProfit >= 0 ? <RiseOutlined /> : <FallOutlined />}
+              />
+              <div style={{ marginTop: 4 }}>
+                <Tag color={metrics.profitMargin >= 0 ? "success" : "error"}>
+                  Margin: {metrics.profitMargin.toFixed(1)}%
+                </Tag>
+              </div>
+            </Card>
+          </Col>
+        </Row>
 
-export default StockPage;
+        {/* Visual Charts */}
+        <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
+          <Col xs={24} lg={12}>
+            <Card
+              title={
+                <Space>
+                  <PieChartOutlined style={{ color: "#183c35" }} />
+                  <span>Financial Breakdown Overview</span>
+                </Space>
+              }
+              bordered={false}
+              style={{ boxShadow: "0 4px 16px rgba(24,60,53,0.05)", borderRadius: 12, height: "100%" }}
+            >
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={financialPieData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      innerRadius={45}
+                      paddingAngle={4}
+                    >
+                      {financialPieData.map((_, index) => (
+                        <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip formatter={(val) => formatCurrency(val)} />
+                    <Legend verticalAlign="bottom" height={36} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </Col>
+
+          <Col xs={24} lg={12}>
+            <Card
+              title={
+                <Space>
+                  <BarChartOutlined style={{ color: "#183c35" }} />
+                  <span>Stock Valuation by Category</span>
+                </Space>
+              }
+              bordered={false}
+              style={{ boxShadow: "0 4px 16px rgba(24,60,53,0.05)", borderRadius: 12, height: "100%" }}
+            >
+              <div style={{ width: "100%", height: 280 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={categoryChartData} margin={{ top: 10, right: 20, left: 10, bottom: 20 }}>
+                    <XAxis dataKey="category" tick={{ fontSize: 11 }} />
+                    <YAxis tick={{ fontSize: 11 }} />
+                    <RechartsTooltip formatter={(val) => formatCurrency(val)} />
+                    <Bar dataKey="valuation" fill="#183c35" radius={[6, 6, 0, 0]} name="Valuation (PKR)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
+          </Col>
+        </Row>
+
+        {/* Live Inventory Detailed Table */}
+        <Card
+          title={
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span>Live Stock Level & Valuation Table ({products.length} items)</span>
+              {metrics.lowStockItems.length > 0 && (
+                <Tag color="warning" icon={<WarningOutlined />}>
+                  {metrics.lowStockItems.length} Low Stock Alert(s)
+                </Tag>
+              )}
+            </div>
+          }
+          bordered={false}
+          style={{ boxShadow: "0 4px 16px rgba(24,60,53,0.05)", borderRadius: 12 }}
+        >
+          <Table
+            columns={columns}
+            dataSource={products}
+            rowKey="_id"
+            loading={isLoading}
+            pagination={{ pageSize: 8, showSizeChanger: true }}
+            locale={{ emptyText: <Empty description="No inventory items recorded" /> }}
+          />
+        </Card>
+      </div>
+    </DefaultLayout>
+  );
+}

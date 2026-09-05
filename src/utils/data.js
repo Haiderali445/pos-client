@@ -3,41 +3,56 @@ const items = [
       name: "Tea",
       price: 1,
       category: "drinks",
-      image:
-        "https://img.etimg.com/photo/msid-69212931,quality-100/chai-itself-was-once-a-trend-that-developed-this-way-.jpg",
+      image: "https://img.etimg.com/photo/msid-69212931,quality-100/chai-itself-was-once-a-trend-that-developed-this-way-.jpg",
+      stock: 100,
+      salePrice: 1,
+      purchasePrice: 0.5
     },
     {
       name: "coffee",
       price: 2,
       category: "drinks",
       image: "https://i.cdn.newsbytesapp.com/images/l110_14211532861690.jpg",
+      stock: 100,
+      salePrice: 2,
+      purchasePrice: 1.0
     },
     {
       name: "Chicken Biryani",
-      price: 10 ,
+      price: 10,
       category: "rice",
-      image:
-        "https://www.licious.in/blog/wp-content/uploads/2020/12/Hyderabadi-chicken-Biryani.jpg",
+      image: "https://www.licious.in/blog/wp-content/uploads/2020/12/Hyderabadi-chicken-Biryani.jpg",
+      stock: 50,
+      salePrice: 10,
+      purchasePrice: 6.0
     },
     {
       name: "Veg Biryani",
       price: 5,
       category: "rice",
-      image:
-        "https://www.indianveggiedelight.com/wp-content/uploads/2020/04/veg-biryani-instant-pot-featured.jpg",
+      image: "https://www.indianveggiedelight.com/wp-content/uploads/2020/04/veg-biryani-instant-pot-featured.jpg",
+      stock: 50,
+      salePrice: 5,
+      purchasePrice: 3.0
     },
     {
       name: "Chicken Hakka",
       price: 7,
       category: "noodles",
       image: "https://cravecookclick.com/wp-content/uploads/2012/07/IMG_4400.jpg",
+      stock: 40,
+      salePrice: 7,
+      purchasePrice: 4.5
     },
     {
       name: "Eggy",
       price: 5,
       category: "noodles",
-      image:
-        "https://www.licious.in/blog/wp-content/uploads/2020/12/Egg-Noodles-min.jpg",
-    },
+      image: "https://www.licious.in/blog/wp-content/uploads/2020/12/Egg-Noodles-min.jpg",
+      stock: 40,
+      salePrice: 5,
+      purchasePrice: 3.0
+    }
   ];
+  
   module.exports = items;

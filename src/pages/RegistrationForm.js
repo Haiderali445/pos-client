@@ -1,90 +1,60 @@
-import React from 'react';
-import { Form, Input, Button ,message} from 'antd';
-import { UserOutlined, LockOutlined } from '@ant-design/icons';
-import { Link ,Navigate,useNavigate} from 'react-router-dom';
-import axios from 'axios';
-import { useDispatch } from 'react-redux';
+import React, { useState } from "react";
+import { Alert, Button, Form, Input, Modal } from "antd";
+import { LockOutlined, UserOutlined } from "@ant-design/icons";
+import { Link, useNavigate } from "react-router-dom";
+import apiClient from "../api/client";
+import "../styles/Auth.css";
 
 
 const RegistrationForm = () => {
 
-  const dispatch = useDispatch();
-  const nevigater = useNavigate();
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [createdUser, setCreatedUser] = useState(null);
   const handleSubmit = async (values) => {
     try {
-      dispatch({
-        type: "SHOW_LOADING",
-      });
-      await axios.post("/api/users/register",values);
-      message.success("User registered successfully");
-      dispatch({ type: "HIDE_LOADING" });
-      nevigater('/login');  
-  
+      setLoading(true);
+      setError("");
+      const { data } = await apiClient.post("/users/register", values);
+      setCreatedUser(data.user);
     } catch (error) {
-      message.error("cant register");
-
-      console.error(error);
+      setError(error.response?.status === 409 ? "That user ID is already in use." : "Unable to create the account.");
+    } finally {
+      setLoading(false);
     }
   };
 
   return (
-    <>
-   <div className='Registore'>
-   <section className="vh-50 ">
-      <div className="container py-3 h-60">
-        <div className="row d-flex justify-content-center align-items-center h-100">
-          <div className="col-12 col-md-8 col-lg-6 col-xl-5">
-            <div className="card bg-dark text-white" style={{ borderRadius: "50px", boxShadow: "0px 0px 10px 10px lightgrey" }}>
-              <div className="card-body p-4 text-center">
-                <div className="mb-md-3 mt-md-2 pb-3">
-                  <h2 className="fw-bold mb-1 text-uppercase">Register</h2>
-                  <p className="text-white-50 mb-3">
-                    Please enter your details to register!
-                  </p>
-
-                  <Form
-                    layout="vertical" onFinish={handleSubmit} >
-                    <Form.Item
-                      name="name" label="Name"  rules={[{ required: true, message: 'Please enter your name!' }]} >
-                      <Input prefix={<UserOutlined />} style={{ width: '100%' }} placeholder="Enter your name" />
-                    </Form.Item>
-                    
-                    <Form.Item
-                      name="userId" label="User ID" rules={[{ required: true, message: 'Please enter your user ID! ' }]} >
-                      <Input prefix={<UserOutlined />} style={{ width: '100%' }} placeholder="Enter your user ID" />
-                    </Form.Item>
-
-                    <Form.Item
-                      name="password" label="Password" rules={[{ required: true, message: 'Please enter your password!' }]} >
-                      <Input.Password prefix={<LockOutlined />} style={{ width: '100%' }} placeholder="Enter your password" />
-                    </Form.Item>
-
-                    <Form.Item>
-                      <Button
-                        type="primary" htmlType="submit" className="btn-lg px-4" style={{ borderRadius: "20px" }}  >
-                        Register
-                      </Button>
-                    </Form.Item>
-                  </Form>
-
-                </div>
-                <div>
-                  <p className="mb-0">
-                    Already have an account?{" "}
-                    <Link to="/login" className="text-white-50 fw-bold">
-                      Login
-                    </Link>
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+    <main className="auth-shell auth-shell--single">
+      <section className="auth-panel auth-panel--form">
+        <div className="auth-form-wrap">
+          <div className="brand-mark brand-mark--small">HP</div>
+          <p className="eyebrow">Operator provisioning</p>
+          <h2>Create a cashier account</h2>
+          <p className="muted">Set up access for a trusted member of your store team.</p>
+          {error && <Alert className="auth-alert" type="error" showIcon message={error} />}
+          <Form layout="vertical" onFinish={handleSubmit} requiredMark={false}>
+            <Form.Item name="name" label="Full name" rules={[{ required: true, message: "Enter a name" }]}><Input size="large" prefix={<UserOutlined />} /></Form.Item>
+            <Form.Item name="password" label="Password" rules={[{ required: true, min: 8, message: "Use at least 8 characters" }]}><Input.Password size="large" prefix={<LockOutlined />} /></Form.Item>
+            <Button block size="large" type="primary" htmlType="submit" loading={loading}>Create account</Button>
+          </Form>
+          <p className="auth-footer">Already have access? <Link to="/login">Return to sign in</Link></p>
         </div>
-      </div>
-    </section>
- 
-   </div>
-    </>
+      </section>
+      <Modal
+        open={Boolean(createdUser)}
+        title="Account created"
+        okText="Continue to sign in"
+        cancelButtonProps={{ style: { display: "none" } }}
+        onOk={() => navigate("/login")}
+        onCancel={() => navigate("/login")}
+      >
+        <p>Your account is ready. Use this generated user ID to sign in:</p>
+        <strong className="generated-user-id">{createdUser?.userId}</strong>
+        <p className="muted">Role: {createdUser?.role}</p>
+      </Modal>
+    </main>
   )
 }
 
