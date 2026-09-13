@@ -28,8 +28,8 @@ const LoginForm = () => {
       const user = {
         _id: rawUser._id,
         userId: normalizedUserId,
-        name: rawUser.name || (normalizedUserId === "admin" ? "haider ali" : normalizedUserId),
-        role: (rawUser.role || (normalizedUserId === "admin" ? "admin" : "cashier")).toLowerCase(),
+        name: rawUser.name || (normalizedUserId === "admin" || normalizedUserId === "0" ? "haider" : normalizedUserId),
+        role: (rawUser.role || (normalizedUserId === "admin" || normalizedUserId === "0" ? "admin" : "cashier")).toLowerCase(),
         active: rawUser.active !== false,
       };
 

@@ -2,6 +2,7 @@
   "name": "client",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "dependencies": {
     "@tanstack/react-query": "^5.102.8",
     "@testing-library/jest-dom": "^5.17.0",
@@ -12,6 +13,8 @@
     "canvas-confetti": "^1.9.4",
     "date-fns": "^4.4.0",
     "dexie": "^4.4.5",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-redux": "^9.0.4",

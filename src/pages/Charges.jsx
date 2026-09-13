@@ -30,10 +30,12 @@ import {
 import { format, isValid } from "date-fns";
 import DefaultLayout from "../components/Defaultlayouts";
 import { useChargeMutations, useCharges } from "../hooks/usePosQueries";
+import usePermission from "../hooks/usePermission";
 
 const { Title } = Typography;
 
 export default function ChargesPage() {
+  const { can } = usePermission();
   const { data: chargesData = [], isLoading, isError, refetch } = useCharges();
   const { addCharge, editCharge, deleteCharge } = useChargeMutations();
 
@@ -42,12 +44,10 @@ export default function ChargesPage() {
   const [search, setSearch] = useState("");
   const [form] = Form.useForm();
 
-  // Total expenses calculation
   const totalAmount = useMemo(() => {
     return chargesData.reduce((acc, charge) => acc + (Number(charge.amount) || 0), 0);
   }, [chargesData]);
 
-  // Filtered charges
   const filteredCharges = useMemo(() => {
     return chargesData.filter((c) => {
       const matchSearch =
@@ -132,79 +132,111 @@ export default function ChargesPage() {
         </span>
       ),
     },
-    {
-      title: "Actions",
-      key: "actions",
-      render: (_, record) => (
-        <Space size={8}>
-          <Tooltip title="Edit Expense">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleOpenEdit(record)}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Delete this expense record?"
-            description="Are you sure you want to remove this charge?"
-            onConfirm={() => handleDelete(record)}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    ...(can("expenses:manage")
+      ? [
+          {
+            title: "Actions",
+            key: "actions",
+            render: (_, record) => (
+              <Space size={8}>
+                <Tooltip title="Edit Expense">
+                  <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => handleOpenEdit(record)}
+                  />
+                </Tooltip>
+                <Popconfirm
+                  title="Delete this expense record?"
+                  description="Are you sure you want to remove this charge?"
+                  onConfirm={() => handleDelete(record)}
+                  okText="Delete"
+                  cancelText="Cancel"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </Space>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
     <DefaultLayout>
       <div style={{ maxWidth: 1100, margin: "0 auto", paddingBottom: 40 }}>
-        {/* Page Heading */}
+        {/* Heading */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
           <div>
             <span style={{ fontSize: 11, letterSpacing: "0.14em", textTransform: "uppercase", color: "#8b9991", fontWeight: 700 }}>
               Operating Overheads
             </span>
             <Title level={2} style={{ margin: "2px 0 0", color: "#183c35" }}>
-              Store Expenses & Charges
+              Store Expenses & Operational Charges
             </Title>
           </div>
           <Space>
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isLoading}>
               Refresh
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={handleOpenAdd}
-              style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
-            >
-              Log New Expense
-            </Button>
+            {can("expenses:manage") && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={handleOpenAdd}
+                style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
+              >
+                Log New Expense
+              </Button>
+            )}
           </Space>
         </div>
 
-        {/* Overview Stats */}
+        {/* Top Accent Stat Cards */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
-          <Col xs={12} sm={8}>
-            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+          <Col xs={12} sm={6}>
+            <Card
+              bordered={false}
+              style={{
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #cf1322",
+                background: "#ffffff",
+              }}
+            >
               <Statistic
-                title="Total Operating Expenses"
+                title={
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#cf1322", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Total Expenses
+                  </span>
+                }
                 value={`PKR ${totalAmount.toFixed(2)}`}
-                valueStyle={{ color: "#cf1322" }}
-                prefix={<WalletOutlined />}
+                valueStyle={{ color: "#cf1322", fontWeight: 800, fontSize: 22 }}
+                prefix={<WalletOutlined style={{ color: "#cf1322", marginRight: 4 }} />}
               />
             </Card>
           </Col>
-          <Col xs={12} sm={8}>
-            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+
+          <Col xs={12} sm={6}>
+            <Card
+              bordered={false}
+              style={{
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #183c35",
+                background: "#ffffff",
+              }}
+            >
               <Statistic
-                title="Recorded Entries"
+                title={
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#183c35", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                    Recorded Entries
+                  </span>
+                }
                 value={chargesData.length}
-                prefix={<CalendarOutlined style={{ color: "#183c35" }} />}
+                valueStyle={{ color: "#183c35", fontWeight: 800, fontSize: 22 }}
+                prefix={<CalendarOutlined style={{ color: "#183c35", marginRight: 4 }} />}
               />
             </Card>
           </Col>
@@ -248,7 +280,7 @@ export default function ChargesPage() {
           />
         </Card>
 
-        {/* Add / Edit Expense Modal */}
+        {/* Modal */}
         <Modal
           title={editingCharge ? "Edit Expense Entry" : "Log New Store Expense"}
           open={isModalVisible}
@@ -259,11 +291,7 @@ export default function ChargesPage() {
           footer={null}
           destroyOnClose
         >
-          <Form
-            form={form}
-            layout="vertical"
-            onFinish={handleFormSubmit}
-          >
+          <Form form={form} layout="vertical" onFinish={handleFormSubmit}>
             <Form.Item
               label="Expense Description"
               name="description"

@@ -1,4 +1,4 @@
-﻿import Dexie from "dexie";
+import Dexie from "dexie";
 
 /**
  * PosTerminalDB - Enterprise Offline-First IndexedDB Client Database
@@ -30,10 +30,13 @@ export class PosTerminalDatabase extends Dexie {
       _id: String(item._id || item.id || `LOCAL-${Date.now()}-${Math.random()}`),
       name: item.name || "Untitled Item",
       category: item.category || "General",
-      price: Number(item.price || 0),
+      salePrice: Number(item.salePrice !== undefined ? item.salePrice : item.price || 0),
+      price: Number(item.salePrice !== undefined ? item.salePrice : item.price || 0),
       purchasePrice: Number(item.purchasePrice || 0),
       stock: Number(item.stock || 0),
       barcode: item.barcode ? String(item.barcode).trim() : "",
+      sku: item.sku ? String(item.sku).trim().toUpperCase() : "",
+      reorderLevel: Number(item.reorderLevel || 5),
       image: item.image || "",
       dealers: item.dealers || "",
       updatedAt: item.updatedAt || new Date().toISOString(),

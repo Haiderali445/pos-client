@@ -32,10 +32,12 @@ import {
 } from "@ant-design/icons";
 import DefaultLayout from "../components/Defaultlayouts";
 import { useDealerMutations, useDealers } from "../hooks/usePosQueries";
+import usePermission from "../hooks/usePermission";
 
 const { Title, Text } = Typography;
 
 export default function DealerPage() {
+  const { can } = usePermission();
   const { data: dealersData = [], isLoading, isError, refetch } = useDealers();
   const { addDealer, editDealer, deleteDealer } = useDealerMutations();
 
@@ -44,7 +46,7 @@ export default function DealerPage() {
   const [editingDealer, setEditingDealer] = useState(null);
   const [form] = Form.useForm();
 
-  // Filtered dealers
+  // Filtered dealers search query logic
   const filteredDealers = useMemo(() => {
     return dealersData.filter((d) => {
       const haystack = [
@@ -141,7 +143,10 @@ export default function DealerPage() {
       key: "contact",
       render: (_, record) => (
         <div>
-          <div><UserOutlined style={{ marginRight: 4 }} />{record.contactName || "—"}</div>
+          <div>
+            <UserOutlined style={{ marginRight: 4 }} />
+            {record.contactName || "—"}
+          </div>
         </div>
       ),
     },
@@ -174,31 +179,35 @@ export default function DealerPage() {
         </span>
       ),
     },
-    {
-      title: "Actions",
-      key: "actions",
-      render: (_, record) => (
-        <Space size={8}>
-          <Tooltip title="Edit Supplier">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleOpenEdit(record)}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Delete this supplier?"
-            description="Are you sure you want to remove this dealer?"
-            onConfirm={() => handleDelete(record)}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    ...(can("dealers:manage")
+      ? [
+          {
+            title: "Actions",
+            key: "actions",
+            render: (_, record) => (
+              <Space size={8}>
+                <Tooltip title="Edit Supplier">
+                  <Button
+                    size="small"
+                    icon={<EditOutlined />}
+                    onClick={() => handleOpenEdit(record)}
+                  />
+                </Tooltip>
+                <Popconfirm
+                  title="Delete this supplier?"
+                  description="Are you sure you want to remove this dealer?"
+                  onConfirm={() => handleDelete(record)}
+                  okText="Delete"
+                  cancelText="Cancel"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                </Popconfirm>
+              </Space>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -218,14 +227,16 @@ export default function DealerPage() {
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isLoading}>
               Refresh
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusSquareOutlined />}
-              onClick={handleOpenAdd}
-              style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
-            >
-              Add New Dealer
-            </Button>
+            {can("dealers:manage") && (
+              <Button
+                type="primary"
+                icon={<PlusSquareOutlined />}
+                onClick={handleOpenAdd}
+                style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
+              >
+                Add New Dealer
+              </Button>
+            )}
           </Space>
         </div>
 

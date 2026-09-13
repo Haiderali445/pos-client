@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Alert,
   Button,
@@ -18,20 +18,30 @@ import {
   Tag,
   Tooltip,
   Typography,
+  message,
 } from "antd";
 import {
+  AuditOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
   CreditCardOutlined,
   DeleteOutlined,
   DollarOutlined,
   EditOutlined,
   EyeOutlined,
   FileTextOutlined,
-  PrinterOutlined,
   ReloadOutlined,
   SearchOutlined,
+  StopOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import DefaultLayout from "../components/Defaultlayouts";
 import { useBillMutations, useBills } from "../hooks/usePosQueries";
+import usePermission from "../hooks/usePermission";
+import { useTenantSettings } from "../hooks/useTenantSettings";
+import InvoicePreviewModal from "../components/InvoicePreviewModal";
+import AuditTrailDrawer from "../components/AuditTrailDrawer";
+import apiClient from "../api/client";
 import {
   calculateBillStats,
   filterBills,
@@ -45,27 +55,45 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 
 export default function Billspage() {
+  const { can } = usePermission();
+  const { tenantSettings } = useTenantSettings();
   const { data: billsData = [], isLoading, isError, refetch } = useBills();
   const { editBill, deleteBill } = useBillMutations();
 
   const [selectedBill, setSelectedBill] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [paymentFilter, setPaymentFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [viewModalVisible, setViewModalVisible] = useState(false);
+  const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [form] = Form.useForm();
-  const printableReceiptRef = useRef(null);
 
   // Statistics
   const stats = useMemo(() => calculateBillStats(billsData), [billsData]);
 
-  // Filter bills
-  const filteredBills = useMemo(
-    () => filterBills(billsData, searchQuery, paymentFilter),
-    [billsData, searchQuery, paymentFilter]
-  );
+  // Combined search, payment mode, and invoice status filter
+  const filteredBills = useMemo(() => {
+    let result = filterBills(billsData, searchQuery, paymentFilter);
 
-  // Presentation action handlers (delegated to pure handlers with centralized error handling)
+    if (statusFilter !== "all") {
+      result = result.filter((bill) => {
+        const isVoid = bill.status === "voided";
+        const total = Number(bill.totalAmount || 0);
+        const paid = Number(bill.paidAmount || 0);
+        const isFull = paid >= total;
+
+        if (statusFilter === "voided") return isVoid;
+        if (statusFilter === "completed") return !isVoid && isFull;
+        if (statusFilter === "receivable") return !isVoid && !isFull;
+        return true;
+      });
+    }
+
+    return result;
+  }, [billsData, searchQuery, paymentFilter, statusFilter]);
+
+  // Action Handlers
   const onEditBillSubmit = async (values) => {
     await handleUpdateBill({
       editBillMutation: editBill,
@@ -85,8 +113,14 @@ export default function Billspage() {
     });
   };
 
-  const handlePrint = () => {
-    window.print();
+  const onVoidBillConfirm = async (billId) => {
+    try {
+      await apiClient.post(`/bill/void-bill/${billId}`);
+      message.success("Invoice voided successfully and inventory stock restored!");
+      refetch();
+    } catch (err) {
+      message.error(err.response?.data?.error || "Failed to void invoice");
+    }
   };
 
   const columns = [
@@ -96,18 +130,44 @@ export default function Billspage() {
       key: "_id",
       render: (id, record) => (
         <Space direction="vertical" size={2}>
-          <Text code copyable>
+          <Text code copyable style={{ fontWeight: 700, color: "#183c35" }}>
             {id ? (String(id).startsWith("OFFLINE-") ? id.slice(-8).toUpperCase() : id.slice(-8).toUpperCase()) : "—"}
           </Text>
           {record.isOffline && record.syncStatus === "pending" && (
-            <Tag color="warning" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
-              ⏳ Pending Sync
-            </Tag>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "1px 6px",
+                backgroundColor: "#fff8e6",
+                border: "1px solid #ffd57e",
+                color: "#925400",
+              }}
+            >
+              <ClockCircleOutlined style={{ fontSize: 9 }} /> Pending Sync
+            </span>
           )}
           {record.isOffline && record.syncStatus === "synced" && (
-            <Tag color="cyan" style={{ fontSize: 10, lineHeight: "16px", padding: "0 4px" }}>
-              ✓ Synced
-            </Tag>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                borderRadius: 10,
+                fontSize: 10,
+                fontWeight: 700,
+                padding: "1px 6px",
+                backgroundColor: "#e6f9ed",
+                border: "1px solid #7be4a3",
+                color: "#0d6832",
+              }}
+            >
+              <CheckCircleOutlined style={{ fontSize: 9 }} /> Synced
+            </span>
           )}
         </Space>
       ),
@@ -116,7 +176,11 @@ export default function Billspage() {
       title: "Date",
       dataIndex: "date",
       key: "date",
-      render: (date) => formatBillDate(date),
+      render: (date) => (
+        <Text style={{ fontSize: 13, color: "#475467", fontWeight: 500 }}>
+          {formatBillDate(date)}
+        </Text>
+      ),
     },
     {
       title: "Customer",
@@ -126,22 +190,67 @@ export default function Billspage() {
           <div style={{ fontWeight: 600, color: "#183c35" }}>
             {record.costumerName || "Walk-in Customer"}
           </div>
-          <Text type="secondary" style={{ fontSize: 12 }}>
-            {record.costumerNumber || "No contact"}
+          <Text type="secondary" style={{ fontSize: 11 }}>
+            {record.costumerNumber || "No contact info"}
           </Text>
         </div>
       ),
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (status) => {
+        const isVoid = status === "voided";
+        return (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 12,
+              fontWeight: 700,
+              fontSize: 11,
+              padding: "2px 10px",
+              border: isVoid ? "1px solid #fca5a5" : "1px solid #7be4a3",
+              backgroundColor: isVoid ? "#fee2e2" : "#e6f9ed",
+              color: isVoid ? "#991b1b" : "#0d6832",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: isVoid ? "#cf1322" : "#059669",
+              }}
+            />
+            {(status || "completed").toUpperCase()}
+          </span>
+        );
+      },
     },
     {
       title: "Payment Mode",
       dataIndex: "paymentMethod",
       key: "paymentMethod",
       render: (method) => {
-        const color =
-          method === "cash" ? "green" : method === "card" ? "blue" : "orange";
+        const m = (method || "cash").toLowerCase();
+        const isCash = m === "cash";
+        const isCard = m === "card";
+
         return (
-          <Tag color={color} style={{ textTransform: "capitalize" }}>
-            {method || "cash"}
+          <Tag
+            color={isCash ? "green" : isCard ? "blue" : "warning"}
+            style={{
+              borderRadius: 6,
+              fontWeight: 600,
+              textTransform: "capitalize",
+              fontSize: 11,
+              padding: "2px 8px",
+            }}
+          >
+            {m === "borrow" ? "Borrow / Credit" : m}
           </Tag>
         );
       },
@@ -150,7 +259,11 @@ export default function Billspage() {
       title: "Total Amount",
       dataIndex: "totalAmount",
       key: "totalAmount",
-      render: (amount) => <strong>{formatCurrency(amount)}</strong>,
+      render: (amount) => (
+        <strong style={{ color: "#183c35", fontSize: 13 }}>
+          {formatCurrency(amount)}
+        </strong>
+      ),
     },
     {
       title: "Paid Amount",
@@ -158,11 +271,33 @@ export default function Billspage() {
       key: "paidAmount",
       render: (paid, record) => {
         const total = Number(record.totalAmount || 0);
-        const isFull = Number(paid) >= total;
+        const paidVal = Number(paid || 0);
+        const isFull = paidVal >= total;
+        const isPartial = paidVal > 0 && paidVal < total;
+
         return (
-          <Tag color={isFull ? "success" : "warning"}>
-            {formatCurrency(paid)}
-          </Tag>
+          <span
+            style={{
+              display: "inline-block",
+              borderRadius: 10,
+              fontWeight: 700,
+              fontSize: 11,
+              padding: "2px 8px",
+              border: isFull
+                ? "1px solid #7be4a3"
+                : isPartial
+                ? "1px solid #ffd57e"
+                : "1px solid #fca5a5",
+              backgroundColor: isFull
+                ? "#e6f9ed"
+                : isPartial
+                ? "#fff8e6"
+                : "#fee2e2",
+              color: isFull ? "#0d6832" : isPartial ? "#925400" : "#991b1b",
+            }}
+          >
+            {formatCurrency(paidVal)}
+          </span>
         );
       },
     },
@@ -170,8 +305,8 @@ export default function Billspage() {
       title: "Actions",
       key: "actions",
       render: (_, record) => (
-        <Space size={8}>
-          <Tooltip title="View & Print Receipt">
+        <Space size={8} align="center">
+          <Tooltip title="View & Print Invoice">
             <Button
               size="small"
               icon={<EyeOutlined style={{ color: "#183c35" }} />}
@@ -181,33 +316,53 @@ export default function Billspage() {
               }}
             />
           </Tooltip>
-          <Tooltip title="Edit Details">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => {
-                setSelectedBill(record);
-                form.setFieldsValue({
-                  costumerName: record.costumerName,
-                  costumerNumber: record.costumerNumber,
-                  paymentMethod: record.paymentMethod,
-                  totalAmount: record.totalAmount,
-                  paidAmount: record.paidAmount,
-                });
-                setEditModalVisible(true);
-              }}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Delete Invoice?"
-            description="Are you sure you want to delete this invoice record?"
-            onConfirm={() => onDeleteBillConfirm(record._id)}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
+          {can("bills:edit") && record.status !== "voided" && (
+            <Tooltip title="Edit Details">
+              <Button
+                size="small"
+                icon={<EditOutlined />}
+                onClick={() => {
+                  setSelectedBill(record);
+                  form.setFieldsValue({
+                    costumerName: record.costumerName,
+                    costumerNumber: record.costumerNumber,
+                    paymentMethod: record.paymentMethod,
+                    totalAmount: record.totalAmount,
+                    paidAmount: record.paidAmount,
+                  });
+                  setEditModalVisible(true);
+                }}
+              />
+            </Tooltip>
+          )}
+          {can("bills:void") && record.status !== "voided" && (
+            <Popconfirm
+              title="Void this invoice?"
+              description="Restores products back to stock and marks invoice as voided."
+              onConfirm={() => onVoidBillConfirm(record._id)}
+              okText="Void Invoice"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="Void Transaction">
+                <Button size="small" icon={<StopOutlined style={{ color: "#cf1322" }} />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
+          {can("bills:delete") && (
+            <Popconfirm
+              title="Delete Invoice Record?"
+              description="Are you sure you want to permanently remove this transaction record?"
+              onConfirm={() => onDeleteBillConfirm(record._id)}
+              okText="Delete"
+              cancelText="Cancel"
+              okButtonProps={{ danger: true }}
+            >
+              <Tooltip title="Delete Record">
+                <Button size="small" icon={<DeleteOutlined style={{ color: "#cf1322" }} />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
@@ -215,35 +370,8 @@ export default function Billspage() {
 
   return (
     <DefaultLayout>
-      {/* Scoped print styles optimized for 80mm thermal receipt roll printers */}
-      <style>{`
-        @media print {
-          body * {
-            visibility: hidden !important;
-          }
-          .printable-receipt, .printable-receipt * {
-            visibility: visible !important;
-          }
-          .printable-receipt {
-            position: absolute !important;
-            left: 50% !important;
-            top: 0 !important;
-            transform: translateX(-50%) !important;
-            width: 80mm !important;
-            margin: 0 !important;
-            padding: 4px !important;
-            background: #fff !important;
-          }
-          .ant-modal-footer,
-          .ant-modal-close,
-          .ant-modal-header {
-            display: none !important;
-          }
-        }
-      `}</style>
-
       <div style={{ maxWidth: 1200, margin: "0 auto", paddingBottom: 40 }}>
-        {/* Page Heading */}
+        {/* Page Header */}
         <div
           style={{
             display: "flex",
@@ -270,13 +398,24 @@ export default function Billspage() {
               Invoices & Transaction Logs
             </Title>
           </div>
-          <Button
-            icon={<ReloadOutlined />}
-            onClick={() => refetch()}
-            loading={isLoading}
-          >
-            Refresh Invoices
-          </Button>
+          <Space align="center">
+            {can("bills:void") && (
+              <Button
+                icon={<AuditOutlined />}
+                onClick={() => setAuditDrawerOpen(true)}
+                style={{ borderColor: "#183c35", color: "#183c35", fontWeight: 600 }}
+              >
+                Audit Trail
+              </Button>
+            )}
+            <Button
+              icon={<ReloadOutlined />}
+              onClick={() => refetch()}
+              loading={isLoading}
+            >
+              Refresh Invoices
+            </Button>
+          </Space>
         </div>
 
         {/* Revenue KPI Cards */}
@@ -284,15 +423,32 @@ export default function Billspage() {
           <Col xs={12} sm={6}>
             <Card
               bordered={false}
+              onClick={() => setStatusFilter("all")}
               style={{
-                boxShadow: "0 2px 12px rgba(24,60,53,0.04)",
-                borderRadius: 10,
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #183c35",
+                background: statusFilter === "all" ? "#fbfdfc" : "#ffffff",
+                cursor: "pointer",
               }}
             >
               <Statistic
-                title="Total Invoices"
+                title={
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#183c35",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Total Invoices
+                  </span>
+                }
                 value={stats.count}
-                prefix={<FileTextOutlined style={{ color: "#183c35" }} />}
+                valueStyle={{ color: "#183c35", fontWeight: 800, fontSize: 26 }}
+                prefix={<FileTextOutlined style={{ color: "#183c35", marginRight: 4 }} />}
               />
             </Card>
           </Col>
@@ -300,53 +456,116 @@ export default function Billspage() {
             <Card
               bordered={false}
               style={{
-                boxShadow: "0 2px 12px rgba(24,60,53,0.04)",
-                borderRadius: 10,
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #2d8a55",
+                background: "#ffffff",
               }}
             >
               <Statistic
-                title="Total Billed"
+                title={
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#0d6832",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Total Billed
+                  </span>
+                }
                 value={formatCurrency(stats.totalRevenue)}
-                prefix={<DollarOutlined style={{ color: "#2d8a55" }} />}
+                valueStyle={{ color: "#0d6832", fontWeight: 800, fontSize: 22 }}
+                prefix={<DollarOutlined style={{ color: "#2d8a55", marginRight: 4 }} />}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
             <Card
               bordered={false}
+              onClick={() =>
+                setStatusFilter(statusFilter === "completed" ? "all" : "completed")
+              }
               style={{
-                boxShadow: "0 2px 12px rgba(24,60,53,0.04)",
-                borderRadius: 10,
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #0f766e",
+                background: statusFilter === "completed" ? "#f2fcfb" : "#ffffff",
+                cursor: "pointer",
               }}
             >
               <Statistic
-                title="Collected Revenue"
+                title={
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#0f766e",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Collected Revenue
+                  </span>
+                }
                 value={formatCurrency(stats.totalCollected)}
-                valueStyle={{ color: "#2d8a55" }}
-                prefix={<CreditCardOutlined />}
+                valueStyle={{ color: "#0f766e", fontWeight: 800, fontSize: 22 }}
+                prefix={<CreditCardOutlined style={{ color: "#0f766e", marginRight: 4 }} />}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
             <Card
               bordered={false}
+              onClick={() =>
+                setStatusFilter(statusFilter === "receivable" ? "all" : "receivable")
+              }
               style={{
-                boxShadow: "0 2px 12px rgba(24,60,53,0.04)",
-                borderRadius: 10,
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: `3px solid ${
+                  stats.totalReceivable > 0 ? "#cf1322" : "#8c8c8c"
+                }`,
+                background: statusFilter === "receivable" ? "#fffdf5" : "#ffffff",
+                cursor: "pointer",
               }}
             >
               <Statistic
-                title="Receivable Balance"
+                title={
+                  <span
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: stats.totalReceivable > 0 ? "#b45309" : "#666",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.05em",
+                    }}
+                  >
+                    Receivable Balance
+                  </span>
+                }
                 value={formatCurrency(stats.totalReceivable)}
                 valueStyle={{
                   color: stats.totalReceivable > 0 ? "#cf1322" : "#8c8c8c",
+                  fontWeight: 800,
+                  fontSize: 22,
                 }}
+                prefix={
+                  <WarningOutlined
+                    style={{
+                      color: stats.totalReceivable > 0 ? "#cf1322" : "#8c8c8c",
+                      marginRight: 4,
+                    }}
+                  />
+                }
               />
             </Card>
           </Col>
         </Row>
 
-        {/* Search & Filter Bar */}
+        {/* Search & Multi-Filter Controls */}
         <Card
           bordered={false}
           style={{
@@ -357,7 +576,7 @@ export default function Billspage() {
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
+              justify: "space-between",
               alignItems: "center",
               flexWrap: "wrap",
               gap: 14,
@@ -370,22 +589,38 @@ export default function Billspage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               allowClear
-              style={{ maxWidth: 380 }}
+              style={{ maxWidth: 360 }}
             />
-            <Space>
-              <Text style={{ fontSize: 13, color: "#666" }}>
-                Filter Method:
-              </Text>
-              <Select
-                value={paymentFilter}
-                onChange={setPaymentFilter}
-                style={{ width: 130 }}
-              >
-                <Option value="all">All Modes</Option>
-                <Option value="cash">Cash</Option>
-                <Option value="card">Card</Option>
-                <Option value="borrow">Borrow/Credit</Option>
-              </Select>
+            <Space wrap align="center">
+              {/* Payment Mode Filter */}
+              <Space align="center">
+                <Text style={{ fontSize: 13, color: "#666" }}>Payment Mode:</Text>
+                <Select
+                  value={paymentFilter}
+                  onChange={setPaymentFilter}
+                  style={{ width: 140 }}
+                >
+                  <Option value="all">All Modes</Option>
+                  <Option value="cash">Cash</Option>
+                  <Option value="card">Card</Option>
+                  <Option value="borrow">Borrow / Credit</Option>
+                </Select>
+              </Space>
+
+              {/* Status Filter */}
+              <Space align="center">
+                <Text style={{ fontSize: 13, color: "#666" }}>Invoice Status:</Text>
+                <Select
+                  value={statusFilter}
+                  onChange={setStatusFilter}
+                  style={{ width: 150 }}
+                >
+                  <Option value="all">All Statuses</Option>
+                  <Option value="completed">Fully Paid</Option>
+                  <Option value="receivable">Pending / Credit</Option>
+                  <Option value="voided">Voided Invoices</Option>
+                </Select>
+              </Space>
             </Space>
           </div>
 
@@ -393,7 +628,7 @@ export default function Billspage() {
             <Alert
               type="error"
               showIcon
-              message="Failed to load invoices"
+              message="Failed to load invoices catalog"
               action={
                 <Button size="small" onClick={() => refetch()}>
                   Retry
@@ -411,13 +646,13 @@ export default function Billspage() {
             pagination={{ pageSize: 10, showSizeChanger: true }}
             locale={{
               emptyText: (
-                <Empty description="No invoices found matching query" />
+                <Empty description="No invoices found matching current filters" />
               ),
             }}
           />
         </Card>
 
-        {/* Edit Bill Modal */}
+        {/* Edit Bill Details Modal */}
         {editModalVisible && selectedBill && (
           <Modal
             title="Edit Invoice Information"
@@ -437,7 +672,7 @@ export default function Billspage() {
                   { required: true, message: "Please enter customer name" },
                 ]}
               >
-                <Input />
+                <Input placeholder="Walk-in Customer" />
               </Form.Item>
 
               <Form.Item
@@ -447,7 +682,7 @@ export default function Billspage() {
                   { required: true, message: "Please enter customer phone" },
                 ]}
               >
-                <Input />
+                <Input placeholder="03xx-xxxxxxx" />
               </Form.Item>
 
               <Form.Item
@@ -462,21 +697,26 @@ export default function Billspage() {
                 </Select>
               </Form.Item>
 
-              <Form.Item
-                name="totalAmount"
-                label="Total Amount"
-                rules={[{ required: true }]}
-              >
-                <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-              </Form.Item>
-
-              <Form.Item
-                name="paidAmount"
-                label="Paid Amount"
-                rules={[{ required: true }]}
-              >
-                <InputNumber min={0} precision={2} style={{ width: "100%" }} />
-              </Form.Item>
+              <Row gutter={12}>
+                <Col span={12}>
+                  <Form.Item
+                    name="totalAmount"
+                    label="Total Amount (PKR)"
+                    rules={[{ required: true }]}
+                  >
+                    <InputNumber min={0} precision={2} style={{ width: "100%" }} />
+                  </Form.Item>
+                </Col>
+                <Col span={12}>
+                  <Form.Item
+                    name="paidAmount"
+                    label="Paid Amount (PKR)"
+                    rules={[{ required: true }]}
+                  >
+                    <InputNumber min={0} precision={2} style={{ width: "100%" }} />
+                  </Form.Item>
+                </Col>
+              </Row>
 
               <div
                 style={{
@@ -502,180 +742,23 @@ export default function Billspage() {
           </Modal>
         )}
 
-        {/* View & Print Thermal Receipt Modal */}
-        {viewModalVisible && selectedBill && (
-          <Modal
-            title="Customer Receipt"
-            open={viewModalVisible}
-            onCancel={() => {
-              setViewModalVisible(false);
-              setSelectedBill(null);
-            }}
-            footer={[
-              <Button key="close" onClick={() => setViewModalVisible(false)}>
-                Close
-              </Button>,
-              <Button
-                key="print"
-                type="primary"
-                icon={<PrinterOutlined />}
-                onClick={handlePrint}
-                style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
-              >
-                Print Receipt
-              </Button>,
-            ]}
-            width={420}
-          >
-            <div
-              ref={printableReceiptRef}
-              className="printable-receipt"
-              style={{
-                textAlign: "center",
-                padding: "16px 8px",
-                fontFamily: "monospace",
-                color: "#000",
-              }}
-            >
-              <div style={{ fontSize: 20, fontWeight: 900, letterSpacing: 1 }}>
-                HARDWARE POINT
-              </div>
-              <div style={{ fontSize: 12, color: "#666" }}>
-                Main Retail Terminal, Branch 01
-              </div>
-              <div style={{ fontSize: 11, color: "#888", marginBottom: 12 }}>
-                Phone: +92 (300) 000-0000
-              </div>
+        {/* Invoice Preview Modal */}
+        <InvoicePreviewModal
+          open={viewModalVisible}
+          onClose={() => {
+            setViewModalVisible(false);
+            setSelectedBill(null);
+          }}
+          bill={selectedBill || {}}
+          tenant={tenantSettings}
+          defaultTemplate={tenantSettings?.receiptTemplate || "thermal80mm"}
+        />
 
-              <div
-                style={{
-                  borderBottom: "1px dashed #444",
-                  paddingBottom: 8,
-                  marginBottom: 8,
-                  textAlign: "left",
-                  fontSize: 12,
-                }}
-              >
-                <div>
-                  <strong>Invoice #:</strong> {selectedBill._id}
-                </div>
-                <div>
-                  <strong>Date:</strong> {formatBillDate(selectedBill.date)}
-                </div>
-                <div>
-                  <strong>Customer:</strong>{" "}
-                  {selectedBill.costumerName || "Walk-in"}
-                </div>
-                <div>
-                  <strong>Phone:</strong> {selectedBill.costumerNumber || "—"}
-                </div>
-                <div>
-                  <strong>Payment:</strong>{" "}
-                  {selectedBill.paymentMethod?.toUpperCase()}
-                </div>
-              </div>
-
-              <div style={{ textAlign: "left", marginBottom: 12 }}>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    fontWeight: "bold",
-                    borderBottom: "1px solid #444",
-                    paddingBottom: 4,
-                  }}
-                >
-                  <span>Item</span>
-                  <span>Qty × Price</span>
-                  <span>Total</span>
-                </div>
-                {selectedBill.cartItems?.map((item) => (
-                  <div
-                    key={item._id}
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      fontSize: 12,
-                      padding: "4px 0",
-                    }}
-                  >
-                    <span
-                      style={{
-                        maxWidth: 140,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {item.name}
-                    </span>
-                    <span>
-                      {item.quantity} × {Number(item.salePrice).toFixed(0)}
-                    </span>
-                    <strong>
-                      PKR {(item.quantity * item.salePrice).toFixed(0)}
-                    </strong>
-                  </div>
-                ))}
-              </div>
-
-              <div
-                style={{
-                  borderTop: "1px dashed #444",
-                  paddingTop: 8,
-                  textAlign: "right",
-                  fontSize: 13,
-                }}
-              >
-                <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
-                >
-                  <span>Total Amount:</span>
-                  <strong>
-                    PKR {Number(selectedBill.totalAmount).toFixed(2)}
-                  </strong>
-                </div>
-                <div
-                  style={{ display: "flex", justifyContent: "space-between" }}
-                >
-                  <span>Amount Paid:</span>
-                  <span>PKR {Number(selectedBill.paidAmount).toFixed(2)}</span>
-                </div>
-                {Number(selectedBill.paidAmount) <
-                  Number(selectedBill.totalAmount) && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      color: "#cf1322",
-                      fontWeight: 700,
-                    }}
-                  >
-                    <span>Balance Due:</span>
-                    <span>
-                      PKR{" "}
-                      {(
-                        Number(selectedBill.totalAmount) -
-                        Number(selectedBill.paidAmount)
-                      ).toFixed(2)}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div
-                style={{
-                  marginTop: 20,
-                  fontSize: 11,
-                  color: "#666",
-                  textAlign: "center",
-                }}
-              >
-                *** Thank You for Your Business! ***
-              </div>
-            </div>
-          </Modal>
-        )}
+        {/* Audit Trail Drawer */}
+        <AuditTrailDrawer
+          open={auditDrawerOpen}
+          onClose={() => setAuditDrawerOpen(false)}
+        />
       </div>
     </DefaultLayout>
   );

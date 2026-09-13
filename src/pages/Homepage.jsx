@@ -27,7 +27,6 @@ import {
   KeyOutlined,
   MinusOutlined,
   PlusOutlined,
-  PrinterOutlined,
   ReloadOutlined,
   SearchOutlined,
   ShoppingCartOutlined,
@@ -38,6 +37,8 @@ import DefaultLayout from "../components/Defaultlayouts";
 import useBarcodeScanner from "../hooks/useBarcodeScanner";
 import usePosShortcuts from "../hooks/usePosShortcuts";
 import { useCheckoutMutation, useProducts } from "../hooks/usePosQueries";
+import { useTenantSettings } from "../hooks/useTenantSettings";
+import InvoicePreviewModal from "../components/InvoicePreviewModal";
 import {
   handleAddItemToCart,
   handleBarcodeScan,
@@ -171,9 +172,10 @@ function CartContent({ cartItems, dispatch, onOpenCheckout }) {
   );
 }
 
-const Homepage = () => {
+export default function Homepage() {
   const dispatch = useDispatch();
   const { cartItems } = useSelector((state) => state.rootReducer);
+  const { tenantSettings } = useTenantSettings();
   const { data: products = [], isLoading, isError, refetch } = useProducts();
   const checkoutMutation = useCheckoutMutation();
 
@@ -183,7 +185,6 @@ const Homepage = () => {
   const [mobileCartOpen, setMobileCartOpen] = useState(false);
   const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
   const [completedBill, setCompletedBill] = useState(null);
-  const [invoicePromptVisible, setInvoicePromptVisible] = useState(false);
   const [invoiceVisible, setInvoiceVisible] = useState(false);
 
   const searchRef = useRef(null);
@@ -260,7 +261,7 @@ const Homepage = () => {
         dispatch({ type: "CLEAR_CART" });
         setCheckoutModalOpen(false);
         setCompletedBill(result?.data || result);
-        setInvoicePromptVisible(true);
+        setInvoiceVisible(true);
       },
     });
   };
@@ -270,7 +271,6 @@ const Homepage = () => {
       <div className="pos-page">
         {/* Main Catalog View */}
         <section className="pos-catalog">
-          {/* Header Bar */}
           <div className="pos-toolbar">
             <div className="pos-heading">
               <span className="pos-kicker">Store POS Grid</span>
@@ -283,7 +283,6 @@ const Homepage = () => {
             </div>
           </div>
 
-          {/* Hidden Barcode scanner listener input */}
           <Input
             ref={scanner.inputRef}
             value={scanner.value}
@@ -293,7 +292,6 @@ const Homepage = () => {
             aria-label="Hardware barcode scanner receptor"
           />
 
-          {/* Search bar */}
           <div style={{ marginBottom: 16 }}>
             <Input
               ref={searchRef}
@@ -307,7 +305,6 @@ const Homepage = () => {
             />
           </div>
 
-          {/* Categories Pill Bar */}
           <div className="pos-category-row">
             {categories.map((cat) => (
               <Button
@@ -321,7 +318,6 @@ const Homepage = () => {
             ))}
           </div>
 
-          {/* Error Banner */}
           {isError && (
             <Alert
               type="error"
@@ -336,7 +332,6 @@ const Homepage = () => {
             />
           )}
 
-          {/* Product Grid */}
           {isLoading ? (
             <div className="pos-product-grid">
               {Array.from({ length: 8 }).map((_, index) => (
@@ -366,9 +361,9 @@ const Homepage = () => {
                     onClick={() => addProduct(product)}
                   >
                     <div className="pos-product-topline">
-                      <Tag color={outOfStock ? "default" : lowStock ? "warning" : "success"}>
+                      <span className={`pos-stock-badge ${outOfStock ? "out" : lowStock ? "low" : "in-stock"}`}>
                         {outOfStock ? "Out of Stock" : `${product.stock} in stock`}
-                      </Tag>
+                      </span>
                       <span className="pos-product-cat">{product.category || "General"}</span>
                     </div>
 
@@ -428,7 +423,7 @@ const Homepage = () => {
           )}
         </section>
 
-        {/* Desktop Sticky Side Cart */}
+        {/* Sticky Desktop Side Cart */}
         <aside className="pos-cart-dock">
           <CartContent
             cartItems={cartItems}
@@ -437,7 +432,7 @@ const Homepage = () => {
           />
         </aside>
 
-        {/* Mobile Floating Cart Trigger Bar */}
+        {/* Mobile Bar & Drawer */}
         <div className="pos-mobile-cart-bar">
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             <Badge count={cartItems.reduce((sum, item) => sum + item.quantity, 0)} color="#f2c14e">
@@ -459,7 +454,6 @@ const Homepage = () => {
           </Button>
         </div>
 
-        {/* Mobile / Tablet Cart Drawer */}
         <Drawer
           title="Active Basket"
           placement="right"
@@ -475,8 +469,9 @@ const Homepage = () => {
           />
         </Drawer>
 
-        {/* Checkout Modal */}
+        {/* Responsive Checkout Modal */}
         <Modal
+          centered
           open={checkoutModalOpen}
           title={
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -490,6 +485,13 @@ const Homepage = () => {
           onOk={() => form.submit()}
           destroyOnClose
           width={520}
+          styles={{
+            body: {
+              maxHeight: "calc(100vh - 200px)",
+              overflowY: "auto",
+              paddingRight: 8,
+            },
+          }}
         >
           <Form
             form={form}
@@ -563,88 +565,18 @@ const Homepage = () => {
           </Form>
         </Modal>
 
-        <Modal
-          open={invoicePromptVisible}
-          title="Sale Completed"
-          onCancel={() => setInvoicePromptVisible(false)}
-          footer={[
-            <Button
-              key="close"
-              onClick={() => {
-                setInvoicePromptVisible(false);
-                setCompletedBill(null);
-              }}
-            >
-              Do Not Print
-            </Button>,
-            <Button
-              key="show"
-              onClick={() => {
-                setInvoicePromptVisible(false);
-                setInvoiceVisible(true);
-              }}
-            >
-              Show Invoice
-            </Button>,
-            <Button
-              key="print"
-              type="primary"
-              icon={<PrinterOutlined />}
-              onClick={() => {
-                setInvoicePromptVisible(false);
-                setInvoiceVisible(true);
-                window.setTimeout(() => window.print(), 0);
-              }}
-            >
-              Print Invoice
-            </Button>,
-          ]}
-        >
-          <p>Would you like to view or print the invoice for this sale?</p>
-        </Modal>
-
-        <Modal
+        {/* Unified Invoice Modal */}
+        <InvoicePreviewModal
           open={invoiceVisible}
-          title="Invoice Preview"
-          onCancel={() => setInvoiceVisible(false)}
-          footer={[
-            <Button key="close" onClick={() => setInvoiceVisible(false)}>
-              Close
-            </Button>,
-            <Button key="print" type="primary" icon={<PrinterOutlined />} onClick={() => window.print()}>
-              Print Invoice
-            </Button>,
-          ]}
-        >
-          {completedBill && (
-            <div className="checkout-invoice-preview">
-              <div className="checkout-invoice-brand">HARDWARE POINT</div>
-              <div className="checkout-invoice-subtitle">Main Retail Terminal, Branch 01</div>
-              <div className="checkout-invoice-rule" />
-              <div className="checkout-invoice-meta">
-                <span>Date: {new Date(completedBill.date || Date.now()).toLocaleString()}</span>
-                <span>Payment: {completedBill.paymentMethod || "cash"}</span>
-                {completedBill.costumerName && <span>Customer: {completedBill.costumerName}</span>}
-                {completedBill.costumerNumber && <span>Phone: {completedBill.costumerNumber}</span>}
-              </div>
-              <div className="checkout-invoice-items">
-                {(completedBill.cartItems || []).map((item) => (
-                  <div className="checkout-invoice-item" key={item._id}>
-                    <span>{item.name} x {item.quantity}</span>
-                    <strong>PKR {(Number(item.salePrice) * Number(item.quantity)).toFixed(2)}</strong>
-                  </div>
-                ))}
-              </div>
-              <div className="checkout-invoice-total">
-                <span>Total</span>
-                <strong>PKR {Number(completedBill.totalAmount || 0).toFixed(2)}</strong>
-              </div>
-            </div>
-          )}
-        </Modal>
+          onClose={() => {
+            setInvoiceVisible(false);
+            setCompletedBill(null);
+          }}
+          bill={completedBill || {}}
+          tenant={tenantSettings}
+          defaultTemplate={tenantSettings?.receiptTemplate || "thermal80mm"}
+        />
       </div>
     </DefaultLayout>
   );
-};
-
-export default Homepage;
+}

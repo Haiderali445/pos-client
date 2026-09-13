@@ -16,8 +16,15 @@ export function calculateBillStats(bills = []) {
 }
 
 export function filterBills(bills = [], searchQuery = "", paymentFilter = "all") {
-  const safeBills = Array.isArray(bills) ? bills : [];
+  const safeBills = Array.isArray(bills) ? [...bills] : [];
   const query = (searchQuery || "").trim().toLowerCase();
+
+  // Sort latest sales on top
+  safeBills.sort((a, b) => {
+    const timeA = new Date(a?.date || a?.createdAt || 0).getTime();
+    const timeB = new Date(b?.date || b?.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
 
   return safeBills.filter((bill) => {
     const matchSearch =

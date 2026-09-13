@@ -7,6 +7,8 @@ export * from "../calculaters/itemCalculations";
  */
 
 /**
+ * 
+ * 
  * Handles add or edit product submission with centralized error interception.
  * @param {Object} params
  * @param {Object} params.addProduct
@@ -15,6 +17,20 @@ export * from "../calculaters/itemCalculations";
  * @param {Object} params.values
  * @param {Function} [params.onSuccess]
  */
+
+/**
+ * Item Stock Badge Calculator
+ * Returns normalized status badge labels and status identifiers.
+ */
+export function getItemStockBadge(stock, reorderLevel = 5) {
+  if (stock < 1) {
+    return { label: "Out of Stock", status: "out" };
+  }
+  if (stock <= reorderLevel) {
+    return { label: "Low Stock", status: "low" };
+  }
+  return { label: "In Stock", status: "ok" };
+}
 export async function handleProductSubmit({
   addProduct,
   editProduct,

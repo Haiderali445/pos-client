@@ -1,0 +1,116 @@
+/* Global Reset & Typography Baseline */
+:root {
+  --pos-primary: #183c35;
+  --pos-primary-light: #22614e;
+  --pos-accent: #f2c14e;
+  --pos-accent-hover: #e5b33d;
+  --pos-bg: #f4f7f3;
+  --pos-card-bg: #ffffff;
+  --pos-text: #17251f;
+  --pos-text-muted: #7c8982;
+  --pos-border: #dfe8e1;
+  --pos-success: #2d8a55;
+  --pos-warning: #faad14;
+  --pos-danger: #cf1322;
+  --pos-radius: 8px;
+  --pos-radius-lg: 12px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", sans-serif;
+  background-color: var(--pos-bg);
+  color: var(--pos-text);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Custom Webkit Scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c9d8ce;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #68b37d;
+}
+
+/* Global Top Query Progress Bar */
+.global-progress-bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #183c35, #f2c14e, #2d8a55);
+  background-size: 200% 100%;
+  z-index: 9999;
+  animation: progressPulse 1.4s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes progressPulse {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+/* Ant Design Table Modernization */
+.ant-table-wrapper .ant-table-thead > tr > th {
+  background: #f8faf8 !important;
+  color: #183c35 !important;
+  font-weight: 700 !important;
+  border-bottom: 1px solid var(--pos-border) !important;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ant-table-wrapper .ant-table-tbody > tr:hover > td {
+  background: #f4f8f5 !important;
+}
+
+/* Ant Card & Drawer Refinements */
+.ant-card {
+  border-radius: var(--pos-radius-lg);
+  border: 1px solid var(--pos-border);
+}
+
+.ant-modal-content {
+  border-radius: var(--pos-radius-lg);
+  overflow: hidden;
+}
+
+/* Utility Classes */
+.generated-user-id {
+  display: inline-block;
+  background: #eef4f0;
+  color: var(--pos-primary);
+  padding: 4px 12px;
+  border-radius: var(--pos-radius);
+  font-family: 'Space Grotesk', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  margin: 6px 0;
+}

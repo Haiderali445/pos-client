@@ -165,7 +165,7 @@ export default function UserManagement() {
           size="small"
           style={{ width: 115 }}
           onChange={(newRole) => handleRoleChange(record.userId, newRole)}
-          disabled={record.userId === "admin"}
+          disabled={record.userId === "admin" || record.userId === "0"}
         >
           <Option value="admin">
             <Tag color="purple">Admin</Tag>
@@ -188,7 +188,7 @@ export default function UserManagement() {
           <Switch
             checked={active !== false}
             size="small"
-            disabled={record.userId === "admin"}
+            disabled={record.userId === "admin" || record.userId === "0"}
             onChange={(checked) => handleToggleStatus(record, checked)}
           />
           <Text style={{ fontSize: 12 }} type={active !== false ? "success" : "danger"}>
@@ -211,7 +211,7 @@ export default function UserManagement() {
       title: "Actions",
       key: "actions",
       render: (_, record) => {
-        if (record.userId === "admin") {
+        if (record.userId === "admin" || record.userId === "0") {
           return (
             <Tooltip title="Master admin account cannot be deleted">
               <Tag icon={<SafetyCertificateOutlined />} color="gold">

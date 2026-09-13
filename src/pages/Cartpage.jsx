@@ -22,7 +22,6 @@ import {
   CreditCardOutlined,
   DeleteOutlined,
   DollarOutlined,
-  PrinterOutlined,
   SafetyOutlined,
   ShoppingCartOutlined,
 } from "@ant-design/icons";
@@ -30,6 +29,8 @@ import { useDispatch, useSelector } from "react-redux";
 import { useLocation, useNavigate } from "react-router-dom";
 import DefaultLayout from "../components/Defaultlayouts";
 import { useCheckoutMutation } from "../hooks/usePosQueries";
+import { useTenantSettings } from "../hooks/useTenantSettings";
+import InvoicePreviewModal from "../components/InvoicePreviewModal";
 import {
   calculateCartTotal,
   calculateCartUnits,
@@ -48,6 +49,7 @@ export default function Cartpage() {
   const location = useLocation();
   const dispatch = useDispatch();
   const { cartItems } = useSelector((state) => state.rootReducer);
+  const { tenantSettings } = useTenantSettings();
   const checkout = useCheckoutMutation();
 
   const [checkoutOpen, setCheckoutOpen] = useState(
@@ -57,7 +59,6 @@ export default function Cartpage() {
   const [invoiceVisible, setInvoiceVisible] = useState(false);
   const [form] = Form.useForm();
 
-  // Pure decoupled calculations
   const total = useMemo(() => calculateCartTotal(cartItems), [cartItems]);
   const unitsCount = useMemo(() => calculateCartUnits(cartItems), [cartItems]);
   const paidAmount = Form.useWatch("paidAmount", form) || 0;
@@ -95,10 +96,6 @@ export default function Cartpage() {
         setCompletedBill(res?.data || res);
       },
     });
-  };
-
-  const handlePrintInvoice = () => {
-    window.print();
   };
 
   const columns = [
@@ -221,7 +218,6 @@ export default function Cartpage() {
           </div>
 
           <Row gutter={[24, 24]}>
-            {/* Cart Items Table */}
             <Col xs={24} lg={16}>
               <Card
                 bordered={false}
@@ -260,7 +256,6 @@ export default function Cartpage() {
               </Card>
             </Col>
 
-            {/* Summary & Checkout Actions */}
             <Col xs={24} lg={8}>
               <Card
                 bordered={false}
@@ -280,11 +275,24 @@ export default function Cartpage() {
                       display: "flex",
                       justifyContent: "space-between",
                       padding: "8px 0",
-                      color: "#666",
+                      alignItems: "center",
+                      color: "#183c35",
                     }}
                   >
-                    <span>Items Count</span>
-                    <strong>{unitsCount} units</strong>
+                    <span style={{ fontWeight: 600 }}>Total Items / Units</span>
+                    <span
+                      style={{
+                        backgroundColor: "#e6f9ed",
+                        color: "#0d6832",
+                        border: "1px solid #7be4a3",
+                        fontWeight: 800,
+                        padding: "2px 10px",
+                        borderRadius: 12,
+                        fontSize: 12,
+                      }}
+                    >
+                      {unitsCount} units
+                    </span>
                   </div>
                   <div
                     style={{
@@ -352,6 +360,7 @@ export default function Cartpage() {
 
         {/* Checkout Modal */}
         <Modal
+          centered
           open={checkoutOpen}
           title={
             <Space>
@@ -365,6 +374,13 @@ export default function Cartpage() {
           onOk={() => form.submit()}
           destroyOnClose
           width={500}
+          styles={{
+            body: {
+              maxHeight: "calc(100vh - 200px)",
+              overflowY: "auto",
+              paddingRight: 8,
+            },
+          }}
         >
           <Form
             form={form}
@@ -438,8 +454,9 @@ export default function Cartpage() {
           </Form>
         </Modal>
 
-        {/* Sale Success Modal with Invoice details */}
+        {/* Sale Success Modal */}
         <Modal
+          centered
           title={
             <Tag color="success" style={{ fontSize: 14, padding: "4px 10px" }}>
               <CheckCircleOutlined /> Transaction Successful
@@ -474,50 +491,17 @@ export default function Cartpage() {
           </Card>
         </Modal>
 
-        <Modal
-          title="Invoice Preview"
+        {/* Shared Invoice Preview Modal */}
+        <InvoicePreviewModal
           open={invoiceVisible}
-          onCancel={() => setInvoiceVisible(false)}
-          width={420}
-          footer={[
-            <Button key="skip" onClick={() => setInvoiceVisible(false)}>
-              Do Not Print
-            </Button>,
-            <Button
-              key="print"
-              type="primary"
-              icon={<PrinterOutlined />}
-              onClick={handlePrintInvoice}
-              style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
-            >
-              Print Invoice
-            </Button>,
-          ]}
-        >
-          <div className="checkout-invoice-preview">
-            <div className="checkout-invoice-brand">HARDWARE POINT</div>
-            <div className="checkout-invoice-subtitle">Main Retail Terminal, Branch 01</div>
-            <div className="checkout-invoice-rule" />
-            <div className="checkout-invoice-meta">
-              <div><strong>Invoice #:</strong> {completedBill?._id || "—"}</div>
-              <div><strong>Date:</strong> {completedBill?.date ? new Date(completedBill.date).toLocaleString() : "—"}</div>
-              <div><strong>Customer:</strong> {completedBill?.costumerName || "Walk-in"}</div>
-              <div><strong>Payment:</strong> {completedBill?.paymentMethod?.toUpperCase() || "—"}</div>
-            </div>
-            <div className="checkout-invoice-items">
-              {completedBill?.cartItems?.map((item) => (
-                <div className="checkout-invoice-item" key={item._id}>
-                  <span>{item.name} × {item.quantity}</span>
-                  <strong>{formatCurrency(Number(item.salePrice) * item.quantity)}</strong>
-                </div>
-              ))}
-            </div>
-            <div className="checkout-invoice-total">
-              <span>Total</span>
-              <strong>{formatCurrency(completedBill?.totalAmount)}</strong>
-            </div>
-          </div>
-        </Modal>
+          onClose={() => {
+            setInvoiceVisible(false);
+            setCompletedBill(null);
+          }}
+          bill={completedBill || {}}
+          tenant={tenantSettings}
+          defaultTemplate={tenantSettings?.receiptTemplate || "thermal80mm"}
+        />
       </div>
     </DefaultLayout>
   );

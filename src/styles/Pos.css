@@ -159,12 +159,48 @@
   margin-bottom: 10px;
 }
 
+/* High-Contrast Product Stock Badges */
+.pos-stock-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+
+.pos-stock-badge.in-stock {
+  background: #e6f9ed;
+  border: 1px solid #7be4a3;
+  color: #0d6832;
+}
+
+.pos-stock-badge.low {
+  background: #fff8e6;
+  border: 1px solid #ffd57e;
+  color: #925400;
+}
+
+.pos-stock-badge.out {
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  color: #991b1b;
+}
+
 .pos-product-cat {
   font-size: 11px;
-  color: #8b9991;
-  font-weight: 600;
-  text-transform: capitalize;
-  max-width: 90px;
+  color: #183c35;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: #eaf1ed;
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #d2e4d8;
+  max-width: 100px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

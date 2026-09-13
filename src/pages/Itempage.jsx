@@ -33,6 +33,7 @@ import {
 } from "@ant-design/icons";
 import DefaultLayout from "../components/Defaultlayouts";
 import { useProductMutations, useProducts } from "../hooks/usePosQueries";
+import usePermission from "../hooks/usePermission";
 import {
   calculateItemStats,
   extractItemCategories,
@@ -48,6 +49,7 @@ const { Title, Text } = Typography;
 const { Option } = Select;
 
 export default function ItemPage() {
+  const { can } = usePermission();
   const { data: itemsData = [], isLoading, isError, refetch } = useProducts();
   const { addProduct, editProduct, deleteProduct } = useProductMutations();
 
@@ -55,15 +57,31 @@ export default function ItemPage() {
   const [editItem, setEditItem] = useState(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [stockFilter, setStockFilter] = useState("all");
   const [form] = Form.useForm();
 
-  // Pure decoupled calculations and filtering
+  // Pure decoupled calculations
   const stats = useMemo(() => calculateItemStats(itemsData), [itemsData]);
   const categories = useMemo(() => extractItemCategories(itemsData), [itemsData]);
-  const filteredItems = useMemo(
-    () => filterItems(itemsData, search, categoryFilter),
-    [itemsData, search, categoryFilter]
-  );
+
+  // Combined Search, Category, and Stock Level Filter
+  const filteredItems = useMemo(() => {
+    let result = filterItems(itemsData, search, categoryFilter);
+
+    if (stockFilter !== "all") {
+      result = result.filter((item) => {
+        const isOut = item.stock < 1;
+        const isLow = !isOut && item.stock <= (item.reorderLevel || 5);
+
+        if (stockFilter === "low") return isLow;
+        if (stockFilter === "out") return isOut;
+        if (stockFilter === "in_stock") return !isOut && !isLow;
+        return true;
+      });
+    }
+
+    return result;
+  }, [itemsData, search, categoryFilter, stockFilter]);
 
   // Handle item deletion
   const handleDelete = async (record) => {
@@ -159,43 +177,91 @@ export default function ItemPage() {
       key: "stock",
       render: (_, record) => {
         const badge = getItemStockBadge(record.stock, record.reorderLevel);
-        return <Tag color={badge.color}>{badge.label}</Tag>;
+        const isOut = record.stock < 1;
+        const isLow = !isOut && record.stock <= (record.reorderLevel || 5);
+
+        return (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 12,
+              fontWeight: 700,
+              fontSize: 12,
+              padding: "3px 10px",
+              border: isOut
+                ? "1px solid #fca5a5"
+                : isLow
+                ? "1px solid #ffd57e"
+                : "1px solid #7be4a3",
+              backgroundColor: isOut
+                ? "#fee2e2"
+                : isLow
+                ? "#fff8e6"
+                : "#e6f9ed",
+              color: isOut ? "#991b1b" : isLow ? "#925400" : "#0d6832",
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                backgroundColor: isOut
+                  ? "#cf1322"
+                  : isLow
+                  ? "#d97706"
+                  : "#059669",
+              }}
+            />
+            {record.stock} units {badge.status !== "ok" ? `(${badge.label})` : ""}
+          </span>
+        );
       },
     },
     {
       title: "Stock Value",
       key: "stockValue",
       render: (_, record) => (
-        <Text type="secondary">
+        <strong style={{ color: "#183c35", fontWeight: 700, fontSize: 13 }}>
           {formatCurrency(computeItemValuation(record.purchasePrice, record.stock))}
-        </Text>
+        </strong>
       ),
     },
-    {
-      title: "Actions",
-      key: "actions",
-      render: (_, record) => (
-        <Space size={8}>
-          <Tooltip title="Edit Product">
-            <Button
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => openEditModal(record)}
-            />
-          </Tooltip>
-          <Popconfirm
-            title="Delete this product?"
-            description="Are you sure you want to remove this item from the store?"
-            onConfirm={() => handleDelete(record)}
-            okText="Delete"
-            cancelText="Cancel"
-            okButtonProps={{ danger: true }}
-          >
-            <Button size="small" type="text" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
+    ...(can("catalog:manage") || can("catalog:delete")
+      ? [
+          {
+            title: "Actions",
+            key: "actions",
+            render: (_, record) => (
+              <Space size={8}>
+                {can("catalog:manage") && (
+                  <Tooltip title="Edit Product">
+                    <Button
+                      size="small"
+                      icon={<EditOutlined />}
+                      onClick={() => openEditModal(record)}
+                    />
+                  </Tooltip>
+                )}
+                {can("catalog:delete") && (
+                  <Popconfirm
+                    title="Delete this product?"
+                    description="Are you sure you want to remove this item from the store?"
+                    onConfirm={() => handleDelete(record)}
+                    okText="Delete"
+                    cancelText="Cancel"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                  </Popconfirm>
+                )}
+              </Space>
+            ),
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -215,53 +281,92 @@ export default function ItemPage() {
             <Button icon={<ReloadOutlined />} onClick={() => refetch()} loading={isLoading}>
               Refresh
             </Button>
-            <Button
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={openAddModal}
-              style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
-            >
-              Add New Product
-            </Button>
+            {can("catalog:manage") && (
+              <Button
+                type="primary"
+                icon={<PlusOutlined />}
+                onClick={openAddModal}
+                style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
+              >
+                Add New Product
+              </Button>
+            )}
           </Space>
         </div>
 
         {/* Stock Overview Cards */}
         <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+            <Card
+              bordered={false}
+              style={{
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #183c35",
+                background: "#ffffff",
+              }}
+            >
               <Statistic
-                title="Catalog Items"
+                title={<span style={{ fontWeight: 700, color: "#183c35", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>Catalog Items</span>}
                 value={stats.totalCount}
-                prefix={<CarryOutOutlined style={{ color: "#183c35" }} />}
+                valueStyle={{ color: "#183c35", fontWeight: 800, fontSize: 26 }}
+                prefix={<CarryOutOutlined style={{ color: "#183c35", marginRight: 4 }} />}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+            <Card
+              bordered={false}
+              style={{
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #2d8a55",
+                background: "#ffffff",
+              }}
+            >
               <Statistic
-                title="Total Stock Units"
+                title={<span style={{ fontWeight: 700, color: "#0d6832", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>Total Stock Units</span>}
                 value={stats.totalStockUnits}
-                valueStyle={{ color: "#2d8a55" }}
+                valueStyle={{ color: "#0d6832", fontWeight: 800, fontSize: 26 }}
+                suffix={<span style={{ fontSize: 13, color: "#526e60", fontWeight: 600 }}>units</span>}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+            <Card
+              bordered={false}
+              onClick={() => setStockFilter(stockFilter === "low" ? "all" : "low")}
+              style={{
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: `3px solid ${stats.lowStockCount > 0 ? "#faad14" : "#8c8c8c"}`,
+                background: stockFilter === "low" ? "#fffdf5" : "#ffffff",
+                cursor: "pointer",
+              }}
+            >
               <Statistic
-                title="Low Stock Alerts"
+                title={<span style={{ fontWeight: 700, color: stats.lowStockCount > 0 ? "#b45309" : "#666", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>Low Stock Alerts</span>}
                 value={stats.lowStockCount}
-                valueStyle={{ color: stats.lowStockCount > 0 ? "#faad14" : "#8c8c8c" }}
-                prefix={<WarningOutlined />}
+                valueStyle={{ color: stats.lowStockCount > 0 ? "#b45309" : "#8c8c8c", fontWeight: 800, fontSize: 26 }}
+                prefix={<WarningOutlined style={{ color: stats.lowStockCount > 0 ? "#faad14" : "#8c8c8c" }} />}
               />
             </Card>
           </Col>
           <Col xs={12} sm={6}>
-            <Card bordered={false} style={{ boxShadow: "0 2px 12px rgba(24,60,53,0.04)", borderRadius: 10 }}>
+            <Card
+              bordered={false}
+              style={{
+                boxShadow: "0 4px 16px rgba(24,60,53,0.06)",
+                borderRadius: 12,
+                borderTop: "3px solid #0f766e",
+                background: "#ffffff",
+              }}
+            >
               <Statistic
-                title="Inventory Valuation"
+                title={<span style={{ fontWeight: 700, color: "#0f766e", fontSize: 12, textTransform: "uppercase", letterSpacing: "0.05em" }}>Inventory Valuation</span>}
                 value={formatCurrency(stats.inventoryValuation)}
-                prefix={<DollarOutlined style={{ color: "#183c35" }} />}
+                valueStyle={{ color: "#0f766e", fontWeight: 800, fontSize: 22 }}
+                prefix={<DollarOutlined style={{ color: "#0f766e" }} />}
               />
             </Card>
           </Col>
@@ -276,17 +381,31 @@ export default function ItemPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               allowClear
-              style={{ maxWidth: 360 }}
+              style={{ maxWidth: 320 }}
             />
-            <Space>
-              <Text style={{ fontSize: 13, color: "#666" }}>Filter Category:</Text>
-              <Select value={categoryFilter} onChange={setCategoryFilter} style={{ width: 140 }}>
-                {categories.map((c) => (
-                  <Option key={c} value={c}>
-                    {c === "all" ? "All Categories" : c}
-                  </Option>
-                ))}
-              </Select>
+            <Space wrap>
+              {/* Category Filter */}
+              <Space>
+                <Text style={{ fontSize: 13, color: "#666" }}>Category:</Text>
+                <Select value={categoryFilter} onChange={setCategoryFilter} style={{ width: 140 }}>
+                  {categories.map((c) => (
+                    <Option key={c} value={c}>
+                      {c === "all" ? "All Categories" : c}
+                    </Option>
+                  ))}
+                </Select>
+              </Space>
+
+              {/* Stock Status Filter */}
+              <Space>
+                <Text style={{ fontSize: 13, color: "#666" }}>Stock Level:</Text>
+                <Select value={stockFilter} onChange={setStockFilter} style={{ width: 150 }}>
+                  <Option value="all">All Levels</Option>
+                  <Option value="in_stock">In Stock</Option>
+                  <Option value="low">Low Stock Alerts</Option>
+                  <Option value="out">Out of Stock</Option>
+                </Select>
+              </Space>
             </Space>
           </div>
 
@@ -306,7 +425,7 @@ export default function ItemPage() {
             rowKey="_id"
             loading={isLoading}
             pagination={{ pageSize: 10, showSizeChanger: true }}
-            locale={{ emptyText: <Empty description="No products found" /> }}
+            locale={{ emptyText: <Empty description="No products match your filters" /> }}
           />
         </Card>
 
