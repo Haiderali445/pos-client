@@ -1,0 +1,783 @@
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  Col,
+  Row,
+  Drawer,
+  Empty,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Radio,
+  Select,
+  Skeleton,
+  Tag,
+  Tooltip,
+  Typography,
+} from "antd";
+import {
+  BarcodeOutlined,
+  CarOutlined,
+  CheckCircleOutlined,
+  ClearOutlined,
+  CreditCardOutlined,
+  DeleteOutlined,
+  DollarOutlined,
+  KeyOutlined,
+  MinusOutlined,
+  PercentageOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined,
+  ShoppingCartOutlined,
+  ThunderboltOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import { useDispatch, useSelector } from "react-redux";
+import DefaultLayout from "../components/Defaultlayouts";
+import useBarcodeScanner from "../hooks/useBarcodeScanner";
+import usePosShortcuts from "../hooks/usePosShortcuts";
+import { useCheckoutMutation, useProducts, useAccounts } from "../hooks/usePosQueries";
+import { useTenantSettings } from "../hooks/useTenantSettings";
+import InvoicePreviewModal from "../components/InvoicePreviewModal";
+import {
+  handleAddItemToCart,
+  handleBarcodeScan,
+  extractCatalogCategories,
+  filterCatalogProducts,
+} from "../handlers/posHandlers";
+import {
+  calculateCartSubtotal,
+  calculateCartTotal,
+  calculateTaxAmount,
+  calculateChangeDue,
+  calculateDueDebt,
+  formatCurrency,
+  handleCheckoutSubmission,
+} from "../handlers/cartHandlers";
+import { notifyInfo } from "../utils/errorHandler";
+import "../styles/Pos.css";
+
+const { Text } = Typography;
+
+function CartContent({ cartItems, dispatch, onOpenCheckout, tenantSettings }) {
+  const taxRate = Number(tenantSettings?.taxRate || 0);
+  const taxStrategy = tenantSettings?.taxStrategy || "zero";
+  const subtotal = useMemo(() => calculateCartSubtotal(cartItems), [cartItems]);
+  const taxAmount = useMemo(
+    () => calculateTaxAmount(subtotal, taxRate, taxStrategy),
+    [subtotal, taxRate, taxStrategy]
+  );
+  const netTotal = useMemo(
+    () => calculateCartTotal(cartItems, { taxRate, taxStrategy }),
+    [cartItems, taxRate, taxStrategy]
+  );
+
+  return (
+    <div className="pos-cart-inner">
+      <div className="pos-cart-heading">
+        <div>
+          <span className="pos-kicker">Active Transaction</span>
+          <h2>Current Sale</h2>
+        </div>
+        <Badge count={cartItems.reduce((acc, item) => acc + item.quantity, 0)} showZero color="#183c35">
+          <ShoppingCartOutlined className="pos-cart-icon" />
+        </Badge>
+      </div>
+
+      <div className="pos-cart-lines">
+        {cartItems.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="Cart is empty. Scan barcode or click an item."
+            style={{ margin: "40px 0" }}
+          />
+        ) : (
+          cartItems.map((item) => (
+            <div className="pos-cart-line" key={item._id}>
+              <div className="pos-cart-line-copy">
+                <strong>{item.name}</strong>
+                <span>PKR {Number(item.salePrice).toFixed(2)} each</span>
+              </div>
+              <div className="pos-cart-line-actions">
+                <Button
+                  size="small"
+                  shape="circle"
+                  icon={<MinusOutlined />}
+                  onClick={() =>
+                    dispatch({
+                      type: "UPDATE_CART",
+                      payload: { ...item, quantity: Math.max(1, item.quantity - 1) },
+                    })
+                  }
+                />
+                <span className="pos-cart-qty-text">{item.quantity}</span>
+                <Button
+                  size="small"
+                  shape="circle"
+                  icon={<PlusOutlined />}
+                  disabled={item.quantity >= item.stock}
+                  onClick={() =>
+                    dispatch({
+                      type: "UPDATE_CART",
+                      payload: { ...item, quantity: item.quantity + 1 },
+                    })
+                  }
+                />
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  onClick={() => dispatch({ type: "DELETE_FROM_CART", payload: item })}
+                />
+              </div>
+              <strong className="pos-cart-line-total">
+                PKR {(item.salePrice * item.quantity).toFixed(2)}
+              </strong>
+            </div>
+          ))
+        )}
+      </div>
+
+      {cartItems.length > 0 && (
+        <div style={{ textAlign: "right", padding: "4px 0" }}>
+          <Button
+            size="small"
+            type="link"
+            danger
+            icon={<ClearOutlined />}
+            onClick={() => dispatch({ type: "CLEAR_CART" })}
+          >
+            Clear Basket
+          </Button>
+        </div>
+      )}
+
+      <div className="pos-cart-summary">
+        <div>
+          <span>Subtotal</span>
+          <strong>PKR {subtotal.toFixed(2)}</strong>
+        </div>
+        <div>
+          <span>{taxRate > 0 ? `Tax / GST (${taxRate}%)` : "Tax / GST"}</span>
+          <strong>PKR {taxAmount.toFixed(2)}</strong>
+        </div>
+        <div className="pos-cart-total">
+          <span>Net Total</span>
+          <strong style={{ color: "#183c35", fontSize: 20 }}>
+            PKR {netTotal.toFixed(2)}
+          </strong>
+        </div>
+      </div>
+
+      <Button
+        type="primary"
+        size="large"
+        block
+        className="pos-checkout-btn"
+        disabled={!cartItems.length}
+        onClick={onOpenCheckout}
+      >
+        <span style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+          <span>Proceed to Pay</span>
+          <span className="pos-shortcut">
+            <KeyOutlined /> F4
+          </span>
+        </span>
+      </Button>
+    </div>
+  );
+}
+
+export default function Homepage() {
+  const dispatch = useDispatch();
+  const { cartItems } = useSelector((state) => state.rootReducer);
+  const { tenantSettings } = useTenantSettings();
+  const { data: products = [], isLoading, isError, refetch } = useProducts();
+  const { data: customerAccounts = [], isLoading: loadingAccounts } = useAccounts({
+    accountType: "Customer",
+  });
+  const checkoutMutation = useCheckoutMutation();
+
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [category, setCategory] = useState("all");
+  const [mobileCartOpen, setMobileCartOpen] = useState(false);
+  const [checkoutModalOpen, setCheckoutModalOpen] = useState(false);
+  const [completedBill, setCompletedBill] = useState(null);
+  const [invoiceVisible, setInvoiceVisible] = useState(false);
+
+  const searchRef = useRef(null);
+  const [form] = Form.useForm();
+
+  const taxRate = Number(tenantSettings?.taxRate || 0);
+  const taxStrategy = tenantSettings?.taxStrategy || "zero";
+
+  const watchedFare = Form.useWatch("fare", form) || 0;
+  const watchedDiscount = Form.useWatch("totalDiscount", form) || 0;
+  const watchedAccountId = Form.useWatch("accountId", form);
+  const paidAmount = Form.useWatch("paidAmount", form);
+  const paymentMethod = Form.useWatch("paymentMethod", form) || "cash";
+
+  const selectedCustomer = useMemo(
+    () => customerAccounts.find((c) => String(c._id) === String(watchedAccountId)),
+    [customerAccounts, watchedAccountId]
+  );
+
+  const subtotal = useMemo(() => calculateCartSubtotal(cartItems), [cartItems]);
+  const total = useMemo(
+    () =>
+      calculateCartTotal(cartItems, {
+        totalDiscount: watchedDiscount,
+        fare: watchedFare,
+        taxRate,
+        taxStrategy,
+      }),
+    [cartItems, watchedDiscount, watchedFare, taxRate, taxStrategy]
+  );
+
+  const discountedSubtotal = Math.max(0, subtotal - Number(watchedDiscount || 0));
+  const taxAmount = useMemo(
+    () => calculateTaxAmount(discountedSubtotal, taxRate, taxStrategy),
+    [discountedSubtotal, taxRate, taxStrategy]
+  );
+
+  const changeDue = useMemo(
+    () => calculateChangeDue(paidAmount, total),
+    [paidAmount, total]
+  );
+  const dueDebt = useMemo(
+    () => calculateDueDebt(paidAmount, total),
+    [paidAmount, total]
+  );
+
+  const handleCustomerSelect = (accId) => {
+    if (!accId) {
+      form.setFieldsValue({ accountId: null });
+      return;
+    }
+    const customer = customerAccounts.find((c) => String(c._id) === String(accId));
+    if (customer) {
+      form.setFieldsValue({
+        accountId: customer._id,
+        costumerName: customer.name || "",
+        costumerNumber: customer.phone || "",
+      });
+    }
+  };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim().toLowerCase()), 150);
+    return () => window.clearTimeout(timer);
+  }, [search]);
+
+  const addProduct = (product) => {
+    handleAddItemToCart({ product, cartItems, dispatch });
+  };
+
+  const scanProduct = (code) => {
+    handleBarcodeScan({ code, products, cartItems, dispatch });
+  };
+
+  const scanner = useBarcodeScanner(scanProduct);
+
+  const openCheckout = () => {
+    if (!cartItems.length) {
+      notifyInfo("Please add items to the cart before checkout.");
+      return;
+    }
+    const initialTax = calculateTaxAmount(subtotal, taxRate, taxStrategy);
+    const initialTotal = Number((subtotal + initialTax).toFixed(2));
+
+    form.setFieldsValue({
+      fare: 0,
+      totalDiscount: 0,
+      accountId: null,
+      paidAmount: initialTotal,
+      paymentMethod: "cash",
+      costumerName: "",
+      costumerNumber: "",
+    });
+    setCheckoutModalOpen(true);
+    setMobileCartOpen(false);
+  };
+
+  usePosShortcuts({
+    onScanner: () => {
+      scanner.focusScanner();
+      searchRef.current?.focus();
+    },
+    onCheckout: () => {
+      if (cartItems.length) {
+        openCheckout();
+      }
+    },
+    onEscape: () => {
+      setSearch("");
+      setCheckoutModalOpen(false);
+      setMobileCartOpen(false);
+    },
+    onSearch: () => {
+      searchRef.current?.focus();
+    },
+  });
+
+  const categories = useMemo(() => extractCatalogCategories(products), [products]);
+
+  const filteredProducts = useMemo(
+    () => filterCatalogProducts(products, debouncedSearch, category),
+    [category, debouncedSearch, products]
+  );
+
+  const handleCheckoutSubmit = async (values) => {
+    await handleCheckoutSubmission({
+      checkoutMutation,
+      values,
+      cartItems,
+      calculated: {
+        subtotal,
+        totalDiscount: Number(values.totalDiscount || 0),
+        fare: Number(values.fare || 0),
+        taxAmount,
+        total,
+      },
+      onSuccess: (result) => {
+        dispatch({ type: "CLEAR_CART" });
+        setCheckoutModalOpen(false);
+        setCompletedBill(result?.data || result);
+        setInvoiceVisible(true);
+      },
+    });
+  };
+
+  return (
+    <DefaultLayout>
+      <div className="pos-page">
+        {/* Main Catalog View */}
+        <section className="pos-catalog">
+          <div className="pos-toolbar">
+            <div className="pos-heading">
+              <span className="pos-kicker">Store POS Grid</span>
+              <h1>Product Catalog</h1>
+            </div>
+            <div className="pos-toolbar-hint">
+              <BarcodeOutlined style={{ color: "#2d8a55", fontSize: 16 }} />
+              <span>Scanner Ready</span>
+              <span className="pos-hotkey">F2</span>
+            </div>
+          </div>
+
+          <Input
+            ref={scanner.inputRef}
+            value={scanner.value}
+            onChange={scanner.handleChange}
+            onKeyDown={scanner.handleKeyDown}
+            className="pos-scanner-input"
+            aria-label="Hardware barcode scanner receptor"
+          />
+
+          <div style={{ marginBottom: 16 }}>
+            <Input
+              ref={searchRef}
+              size="large"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              prefix={<SearchOutlined style={{ color: "#8c8c8c" }} />}
+              placeholder="Search items by name, SKU, or barcode (Ctrl+K)..."
+              allowClear
+              className="pos-search-input"
+            />
+          </div>
+
+          <div className="pos-category-row">
+            {categories.map((cat) => (
+              <Button
+                key={cat}
+                type={category === cat ? "primary" : "default"}
+                onClick={() => setCategory(cat)}
+                className={`pos-category-btn ${category === cat ? "is-active" : ""}`}
+              >
+                {cat === "all" ? "All Products" : cat}
+              </Button>
+            ))}
+          </div>
+
+          {isError && (
+            <Alert
+              type="error"
+              showIcon
+              message="Failed to load product catalog"
+              action={
+                <Button size="small" icon={<ReloadOutlined />} onClick={() => refetch()}>
+                  Retry
+                </Button>
+              }
+              style={{ marginBottom: 16 }}
+            />
+          )}
+
+          {isLoading ? (
+            <div className="pos-product-grid">
+              {Array.from({ length: 8 }).map((_, index) => (
+                <Card key={index} style={{ borderRadius: 12 }}>
+                  <Skeleton active paragraph={{ rows: 2 }} />
+                </Card>
+              ))}
+            </div>
+          ) : filteredProducts.length === 0 ? (
+            <Empty
+              className="pos-empty"
+              description="No matching products found"
+              image={Empty.PRESENTED_IMAGE_SIMPLE}
+            />
+          ) : (
+            <div className="pos-product-grid">
+              {filteredProducts.map((product) => {
+                const outOfStock = product.stock < 1;
+                const lowStock = !outOfStock && product.stock <= (product.reorderLevel || 5);
+                const inCart = cartItems.find((i) => i._id === product._id);
+
+                return (
+                  <Card
+                    key={product._id}
+                    className={`pos-product-card ${outOfStock ? "is-out-of-stock" : ""} ${inCart ? "is-in-cart" : ""}`}
+                    hoverable={!outOfStock}
+                    onClick={() => addProduct(product)}
+                  >
+                    <div className="pos-product-topline">
+                      <span className={`pos-stock-badge ${outOfStock ? "out" : lowStock ? "low" : "in-stock"}`}>
+                        {outOfStock ? "Out of Stock" : `${product.stock} in stock`}
+                      </span>
+                      <span className="pos-product-cat">{product.category || "General"}</span>
+                    </div>
+
+                    {product.image ? (
+                      <div className="pos-product-img-wrap">
+                        <img
+                          src={product.image}
+                          alt={product.name}
+                          className="pos-product-img"
+                          onError={(e) => {
+                            e.target.style.display = "none";
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="pos-product-symbol">
+                        {product.name.slice(0, 1).toUpperCase()}
+                      </div>
+                    )}
+
+                    <h3 className="pos-product-title" title={product.name}>
+                      {product.name}
+                    </h3>
+
+                    <div className="pos-product-bottom">
+                      <div>
+                        <span className="pos-product-price-label">Price</span>
+                        <div className="pos-product-price">
+                          PKR {Number(product.salePrice).toFixed(2)}
+                        </div>
+                      </div>
+
+                      <Tooltip title={outOfStock ? "Out of Stock" : "Add to Cart"}>
+                        <Button
+                          type={inCart ? "primary" : "default"}
+                          disabled={outOfStock}
+                          icon={<PlusOutlined />}
+                          shape="circle"
+                          style={
+                            inCart
+                              ? { backgroundColor: "#183c35", borderColor: "#183c35" }
+                              : {}
+                          }
+                        />
+                      </Tooltip>
+                    </div>
+
+                    {inCart && (
+                      <div className="pos-in-cart-indicator">
+                        <CheckCircleOutlined /> In Cart ({inCart.quantity})
+                      </div>
+                    )}
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* Sticky Desktop Side Cart */}
+        <aside className="pos-cart-dock">
+          <CartContent
+            cartItems={cartItems}
+            dispatch={dispatch}
+            onOpenCheckout={openCheckout}
+            tenantSettings={tenantSettings}
+          />
+        </aside>
+
+        {/* Mobile Bar & Drawer */}
+        <div className="pos-mobile-cart-bar">
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <Badge count={cartItems.reduce((sum, item) => sum + item.quantity, 0)} color="#f2c14e">
+              <ShoppingCartOutlined style={{ fontSize: 22, color: "#fff" }} />
+            </Badge>
+            <div>
+              <div style={{ color: "#dbe4dd", fontSize: 11 }}>Total ({cartItems.length} items)</div>
+              <strong style={{ color: "#fff", fontSize: 16 }}>PKR {total.toFixed(2)}</strong>
+            </div>
+          </div>
+          <Button
+            type="primary"
+            size="large"
+            disabled={!cartItems.length}
+            onClick={() => setMobileCartOpen(true)}
+            style={{ backgroundColor: "#f2c14e", color: "#183c35", fontWeight: 700, border: "none" }}
+          >
+            Review Cart
+          </Button>
+        </div>
+
+        <Drawer
+          title="Active Basket"
+          placement="right"
+          width={360}
+          onClose={() => setMobileCartOpen(false)}
+          open={mobileCartOpen}
+          styles={{ body: { padding: 16 } }}
+        >
+          <CartContent
+            cartItems={cartItems}
+            dispatch={dispatch}
+            onOpenCheckout={openCheckout}
+            tenantSettings={tenantSettings}
+          />
+        </Drawer>
+
+        {/* Responsive Checkout Modal */}
+        <Modal
+          centered
+          open={checkoutModalOpen}
+          title={
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <ThunderboltOutlined style={{ color: "#f2c14e" }} />
+              <span>Complete Payment & Issue Invoice</span>
+            </div>
+          }
+          onCancel={() => setCheckoutModalOpen(false)}
+          okText="Confirm & Complete Sale"
+          confirmLoading={checkoutMutation.isPending}
+          onOk={() => form.submit()}
+          destroyOnClose
+          width={520}
+          styles={{
+            body: {
+              maxHeight: "calc(100vh - 200px)",
+              overflowY: "auto",
+              paddingRight: 8,
+            },
+          }}
+        >
+          <Form
+            form={form}
+            layout="vertical"
+            onFinish={handleCheckoutSubmit}
+            initialValues={{ paymentMethod: "cash", paidAmount: total, fare: 0, totalDiscount: 0 }}
+          >
+            <div className="checkout-total-card">
+              <span>Total Payable Amount</span>
+              <strong>PKR {total.toFixed(2)}</strong>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  fontSize: 12,
+                  marginTop: 8,
+                  paddingTop: 8,
+                  borderTop: "1px solid #d5e5db",
+                  color: "#64736b",
+                }}
+              >
+                <span>Subtotal: PKR {subtotal.toFixed(2)}</span>
+                {watchedDiscount > 0 && <span>Disc: -PKR {Number(watchedDiscount).toFixed(2)}</span>}
+                {taxAmount > 0 && <span>Tax ({taxRate}%): +PKR {taxAmount.toFixed(2)}</span>}
+                {watchedFare > 0 && <span>Fare: +PKR {Number(watchedFare).toFixed(2)}</span>}
+              </div>
+            </div>
+
+            {/* Customer Account / Khata Selector */}
+            <Form.Item label="Customer Account (Khata Tracking)" style={{ marginBottom: 12 }}>
+              <Form.Item name="accountId" noStyle>
+                <Select
+                  showSearch
+                  placeholder="Select registered customer or walk-in"
+                  loading={loadingAccounts}
+                  onChange={handleCustomerSelect}
+                  allowClear
+                  filterOption={(input, option) =>
+                    (option?.label ?? "").toLowerCase().includes(input.toLowerCase())
+                  }
+                  options={[
+                    { value: "", label: "🚶 Walk-in Customer (Non-Account)" },
+                    ...customerAccounts.map((c) => ({
+                      value: c._id,
+                      label: `${c.name} (${c.accountCode || "CUST"}) - ${c.phone || "No Phone"}`,
+                    })),
+                  ]}
+                />
+              </Form.Item>
+            </Form.Item>
+
+            {/* Selected Customer Khata Info Badge */}
+            {selectedCustomer && (
+              <div
+                style={{
+                  background: "#f6ffed",
+                  border: "1px solid #b7eb8f",
+                  borderRadius: 8,
+                  padding: "8px 12px",
+                  marginBottom: 14,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div>
+                    <Text strong style={{ color: "#183c35" }}>
+                      <UserOutlined style={{ marginRight: 6 }} />
+                      {selectedCustomer.name}
+                    </Text>
+                    <span style={{ fontSize: 11, color: "#888", marginLeft: 8 }}>
+                      [{selectedCustomer.accountCode}]
+                    </span>
+                  </div>
+                  <Tag color={selectedCustomer.currentBalance > 0 ? "volcano" : "green"}>
+                    {selectedCustomer.currentBalance > 0
+                      ? `Receivable Debt: PKR ${selectedCustomer.currentBalance.toFixed(2)}`
+                      : "No Debt Outstanding"}
+                  </Tag>
+                </div>
+              </div>
+            )}
+
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="costumerName" label="Customer Name (Optional)">
+                  <Input placeholder="e.g. John" />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="costumerNumber" label="Customer Phone (Optional)">
+                  <Input placeholder="e.g. 03001234567" />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Row gutter={12}>
+              <Col span={12}>
+                <Form.Item name="fare" label="Transport / Delivery Fare">
+                  <InputNumber
+                    min={0}
+                    precision={2}
+                    style={{ width: "100%" }}
+                    prefix={<CarOutlined style={{ color: "#888" }} />}
+                    placeholder="0.00"
+                  />
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item name="totalDiscount" label="Bill Discount">
+                  <InputNumber
+                    min={0}
+                    precision={2}
+                    style={{ width: "100%" }}
+                    prefix={<PercentageOutlined style={{ color: "#888" }} />}
+                    placeholder="0.00"
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
+
+            <Form.Item name="paymentMethod" label="Payment Method" rules={[{ required: true }]}>
+              <Radio.Group optionType="button" buttonStyle="solid" style={{ width: "100%", display: "flex" }}>
+                <Radio.Button value="cash" style={{ flex: 1, textAlign: "center" }}>
+                  <DollarOutlined /> Cash
+                </Radio.Button>
+                <Radio.Button value="card" style={{ flex: 1, textAlign: "center" }}>
+                  <CreditCardOutlined /> Card
+                </Radio.Button>
+                <Radio.Button value="borrow" style={{ flex: 1, textAlign: "center", fontWeight: 600 }}>
+                  Credit / Khata
+                </Radio.Button>
+              </Radio.Group>
+            </Form.Item>
+
+            <Form.Item
+              name="paidAmount"
+              label="Amount Received (Tendered)"
+              rules={[
+                { required: true, message: "Enter the amount paid by customer" },
+                {
+                  validator: (_, value) =>
+                    paymentMethod === "borrow" || Number(value) >= total
+                      ? Promise.resolve()
+                      : Promise.reject(new Error("Amount received must cover total amount, or switch to Credit / Khata")),
+                },
+              ]}
+            >
+              <InputNumber
+                min={0}
+                precision={2}
+                style={{ width: "100%" }}
+                size="large"
+                placeholder="Enter paid amount"
+              />
+            </Form.Item>
+
+            {/* Quick Tender Shortcuts */}
+            <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+              <Button size="small" onClick={() => form.setFieldValue("paidAmount", total)}>
+                Exact Amount
+              </Button>
+              <Button
+                size="small"
+                onClick={() => {
+                  form.setFieldValue("paidAmount", 0);
+                  form.setFieldValue("paymentMethod", "borrow");
+                }}
+              >
+                Zero / Credit
+              </Button>
+            </div>
+
+            <div className="checkout-change-row">
+              <span>{paymentMethod === "borrow" && Number(paidAmount) < total ? "Khata Due (Debt):" : "Customer Change:"}</span>
+              <Tag
+                color={Number(paidAmount) >= total ? "success" : "warning"}
+                style={{ fontSize: 14, padding: "4px 10px" }}
+              >
+                PKR {Number(paidAmount) >= total ? changeDue.toFixed(2) : dueDebt.toFixed(2)}
+              </Tag>
+            </div>
+          </Form>
+        </Modal>
+
+        {/* Unified Invoice Modal */}
+        <InvoicePreviewModal
+          open={invoiceVisible}
+          onClose={() => {
+            setInvoiceVisible(false);
+            setCompletedBill(null);
+          }}
+          bill={completedBill || {}}
+          tenant={tenantSettings}
+          defaultTemplate={tenantSettings?.receiptTemplate || "thermal80mm"}
+        />
+      </div>
+    </DefaultLayout>
+  );
+}
