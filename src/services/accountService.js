@@ -200,6 +200,11 @@ export const accountService = {
     return response.data;
   },
 
+  async recordBalanceAdjustment(accountId, payload) {
+    const response = await apiClient.post(`/accounts/${accountId}/adjustment`, payload);
+    return response.data;
+  },
+
   async getAccountLedger(accountId) {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
       const localAcc = await posDb.accounts.get(String(accountId));

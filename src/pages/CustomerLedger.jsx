@@ -38,9 +38,16 @@ import {
 } from "@ant-design/icons";
 import { usePrintInvoice } from "../hooks/usePrintInvoice";
 import DefaultLayout from "../components/Defaultlayouts";
-import { useAccounts, useAccountMutations, useAccountLedger } from "../hooks/usePosQueries";
+import {
+  useAccounts,
+  useAccountMutations,
+  useAccountLedger,
+} from "../hooks/usePosQueries";
 import { useTenantSettings } from "../hooks/useTenantSettings";
 import KhataStatementTemplate from "../templates/KhataStatementTemplate";
+import InvoicePreviewModal from "../components/InvoicePreviewModal";
+import InvoiceAdjustmentModal from "../components/InvoiceAdjustmentModal";
+import billService from "../services/billService";
 import "../styles/Pos.css";
 
 const { Title, Text } = Typography;
@@ -61,6 +68,9 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [statementDrawerOpen, setStatementDrawerOpen] = useState(false);
   const [activeAccount, setActiveAccount] = useState(null);
+  const [selectedInvoice, setSelectedInvoice] = useState(null);
+  const [adjustmentInvoice, setAdjustmentInvoice] = useState(null);
+  const [adjustmentModalOpen, setAdjustmentModalOpen] = useState(false);
 
   const [formCreate] = Form.useForm();
   const [formPayment] = Form.useForm();
@@ -73,6 +83,9 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
     isLoading: loadingLedger,
     refetch: refetchLedger,
   } = useAccountLedger(activeAccount?._id);
+  const activeBalance = Number(
+    ledgerData?.account?.currentBalance ?? activeAccount?.currentBalance ?? 0
+  );
 
   // ── KPI calculations ──
   const stats = useMemo(() => {
@@ -119,12 +132,13 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
   const handlePaymentSubmit = async (values) => {
     if (!activeAccount) return;
     try {
-      await recordPayment.mutateAsync({
+      const result = await recordPayment.mutateAsync({
         accountId: activeAccount._id,
         amount: values.amount,
         paymentMethod: values.paymentMethod,
         notes: values.notes,
       });
+      if (result?.account) setActiveAccount(result.account);
       message.success(`PKR ${Number(values.amount).toFixed(2)} payment recorded!`);
       setPaymentModalOpen(false);
       formPayment.resetFields();
@@ -148,6 +162,37 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
     }
   };
 
+  const handleViewInvoice = async (transaction) => {
+    const billId = transaction.billId || (
+      transaction.reference_table === "Invoices" ? transaction.reference_id : transaction._id
+    );
+    if (!billId) {
+      message.error("This ledger entry is not linked to an invoice.");
+      return;
+    }
+    try {
+      const invoice = await billService.getBillById(billId);
+      if (!invoice) {
+        message.error("The linked invoice is unavailable.");
+        return;
+      }
+      setSelectedInvoice(invoice);
+    } catch (err) {
+      message.error(err.response?.data?.error || err.message || "Failed to open invoice");
+    }
+  };
+
+  const handleOpenAdjustment = (invoice) => {
+    setAdjustmentInvoice(invoice);
+    setAdjustmentModalOpen(true);
+  };
+
+  const handleAdjustmentComplete = () => {
+    setAdjustmentInvoice(null);
+    refetch();
+    refetchLedger();
+  };
+
   // ── Ledger running balance ──
   const transactions = ledgerData?.transactions || [];
   const transactionsWithRunningBalance = useMemo(() => {
@@ -157,11 +202,15 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
     );
     let running = Number(activeAccount?.openingBalance || 0);
     return sorted.map((t) => {
-      const isPayment = t.invoiceType === "Payment";
-      const debit = !isPayment ? Number(t.totalAmount || 0) : 0;
-      const credit = isPayment ? Number(t.paidAmount || t.totalAmount || 0) : Number(t.paidAmount || 0);
-      running = running + debit - credit;
-      return { ...t, debit, credit, runningBalance: running };
+      const balanceChange = Number(
+        t.balanceChange !== undefined
+          ? t.balanceChange
+          : t.invoiceType === "Payment"
+          ? -Number(t.paidAmount || t.totalAmount || 0)
+          : Number(t.totalAmount || 0) - Number(t.paidAmount || 0)
+      );
+      running = Number((running + balanceChange).toFixed(2));
+      return { ...t, balanceChange, runningBalance: running };
     }).reverse();
   }, [transactions, activeAccount]);
 
@@ -368,10 +417,14 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
             </div>
             <div style={{ textAlign: "right" }}>
               <span style={{ fontSize: 11, color: "#888", display: "block" }}>
-                {isCustomer ? "Current Debt" : "Amount Owed"}
+                {Number(activeAccount.currentBalance || 0) > 0
+                  ? isCustomer ? "Customer owes you" : "You owe supplier"
+                  : Number(activeAccount.currentBalance || 0) < 0
+                  ? isCustomer ? "Customer credit" : "Supplier advance"
+                  : "All settled"}
               </span>
               <strong style={{ fontSize: 18, color: debtColor }}>
-                PKR {Number(activeAccount.currentBalance || 0).toFixed(2)}
+                PKR {Math.abs(Number(activeAccount.currentBalance || 0)).toFixed(2)}
               </strong>
             </div>
           </div>
@@ -485,14 +538,25 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
         title={
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
             <span>Khata Statement: {activeAccount?.name}</span>
-            <Button
-              type="primary"
-              icon={<PrinterOutlined />}
-              style={{ backgroundColor: primary, borderColor: primary }}
-              onClick={handlePrintStatement}
-            >
-              Print
-            </Button>
+            <Space>
+              <Button
+                icon={<DollarOutlined />}
+                onClick={() => {
+                  setAdjustmentInvoice(null);
+                  setAdjustmentModalOpen(true);
+                }}
+              >
+                Adjust balance
+              </Button>
+              <Button
+                type="primary"
+                icon={<PrinterOutlined />}
+                style={{ backgroundColor: primary, borderColor: primary }}
+                onClick={handlePrintStatement}
+              >
+                Print
+              </Button>
+            </Space>
           </div>
         }
         placement="right"
@@ -519,10 +583,14 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
               </div>
               <div style={{ textAlign: "right" }}>
                 <div style={{ fontSize: 11, opacity: 0.8, textTransform: "uppercase" }}>
-                  {isCustomer ? "Outstanding Due" : "Payable Amount"}
+                  {activeBalance > 0
+                    ? isCustomer ? "Customer owes you" : "You owe supplier"
+                    : activeBalance < 0
+                    ? isCustomer ? "You owe customer" : "Supplier advance"
+                    : "All settled"}
                 </div>
                 <div style={{ fontSize: 26, fontWeight: 800, color: "#f2c14e" }}>
-                  PKR {Number(activeAccount.currentBalance || 0).toFixed(2)}
+                  PKR {Math.abs(activeBalance).toFixed(2)}
                 </div>
               </div>
             </div>
@@ -543,50 +611,94 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
                   render: (d) => d ? new Date(d).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "—",
                 },
                 {
-                  title: "Type",
+                  title: "What happened",
                   dataIndex: "invoiceType",
                   key: "invoiceType",
-                  render: (type) => (
-                    <Tag color={type === "Payment" ? "green" : isCustomer ? "blue" : "purple"}>
-                      {type || (isCustomer ? "Sale" : "Purchase")}
-                    </Tag>
+                  render: (type, transaction) => (
+                    <div>
+                      <Tag color={
+                        type === "Payment" ? "green" :
+                        type === "Adjustment" ? "gold" :
+                        isCustomer ? "blue" : "purple"
+                      }>
+                        {type === "Payment"
+                          ? isCustomer ? "Payment received" : "Payment made"
+                          : type === "Adjustment"
+                          ? "Balance adjustment"
+                          : type || (isCustomer ? "Sale" : "Purchase")}
+                      </Tag>
+                      {type === "Adjustment" && transaction.notes && (
+                        <div style={{ maxWidth: 190, fontSize: 11, color: "#667085" }}>
+                          {transaction.notes}
+                        </div>
+                      )}
+                    </div>
                   ),
                 },
                 {
-                  title: "Ref #",
+                  title: "Invoice",
                   key: "ref",
-                  render: (_, t) => t.invoiceNumber || (t._id ? t._id.slice(-6).toUpperCase() : "—"),
+                  render: (_, t) => {
+                    const billId = t.billId || (
+                      t.reference_table === "Invoices" ? t.reference_id : null
+                    );
+                    const invoiceLabel = t.invoiceNumber || (billId ? String(billId) : "—");
+                    return billId ? (
+                      <Button
+                        type="link"
+                        size="small"
+                        style={{ padding: 0, height: "auto" }}
+                        onClick={() => handleViewInvoice(t)}
+                      >
+                        {invoiceLabel}
+                      </Button>
+                    ) : invoiceLabel;
+                  },
                 },
                 {
-                  title: "Debit (+)",
-                  dataIndex: "debit",
-                  key: "debit",
+                  title: "Amount",
+                  key: "amount",
                   align: "right",
-                  render: (amt) =>
-                    amt > 0
-                      ? <span style={{ color: debtColor, fontWeight: 600 }}>+{Number(amt).toFixed(2)}</span>
-                      : <span style={{ color: "#ccc" }}>—</span>,
+                  render: (_, t) => (
+                    <span style={{ fontWeight: 600 }}>
+                      PKR {Number(
+                        t.invoiceType === "Payment"
+                          ? t.paidAmount || t.totalAmount || 0
+                          : t.totalAmount || t.paidAmount || 0
+                      ).toFixed(2)}
+                    </span>
+                  ),
                 },
                 {
-                  title: "Credit (−)",
-                  dataIndex: "credit",
-                  key: "credit",
+                  title: "Paid",
+                  dataIndex: "paidAmount",
+                  key: "paidAmount",
                   align: "right",
-                  render: (amt) =>
-                    amt > 0
-                      ? <span style={{ color: accent, fontWeight: 600 }}>−{Number(amt).toFixed(2)}</span>
-                      : <span style={{ color: "#ccc" }}>—</span>,
+                  render: (amt, t) =>
+                    t.invoiceType !== "Payment" && Number(amt) > 0
+                      ? `PKR ${Number(amt).toFixed(2)}`
+                      : "—",
                 },
                 {
-                  title: "Running Due",
+                  title: "Balance after",
                   dataIndex: "runningBalance",
                   key: "runningBalance",
                   align: "right",
-                  render: (bal) => (
-                    <strong style={{ color: bal > 0 ? debtColor : accent }}>
-                      {Number(bal || 0).toFixed(2)}
-                    </strong>
-                  ),
+                  render: (bal) => {
+                    const label = Number(bal) > 0
+                      ? isCustomer ? "Customer owes you" : "You owe supplier"
+                      : Number(bal) < 0
+                      ? isCustomer ? "Customer has credit" : "Supplier advance"
+                      : "Settled";
+                    return (
+                      <div style={{ textAlign: "right" }}>
+                        <strong style={{ color: bal > 0 ? debtColor : accent }}>
+                          PKR {Math.abs(Number(bal || 0)).toFixed(2)}
+                        </strong>
+                        <div style={{ fontSize: 10, color: "#667085" }}>{label}</div>
+                      </div>
+                    );
+                  },
                 },
               ]}
             />
@@ -595,7 +707,7 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
             <div style={{ display: "none" }}>
               <KhataStatementTemplate
                 ref={statementPrintRef}
-                account={activeAccount}
+                account={ledgerData?.account || activeAccount}
                 transactions={transactions}
                 tenant={tenantSettings}
               />
@@ -603,6 +715,23 @@ function AccountsPanel({ accountType, externalCreateOpen, onExternalCreateClose 
           </div>
         )}
       </Drawer>
+      <InvoicePreviewModal
+        open={Boolean(selectedInvoice)}
+        onClose={() => setSelectedInvoice(null)}
+        bill={selectedInvoice || {}}
+        tenant={tenantSettings}
+        onCreateAdjustment={handleOpenAdjustment}
+      />
+      <InvoiceAdjustmentModal
+        open={adjustmentModalOpen}
+        onClose={() => {
+          setAdjustmentModalOpen(false);
+          setAdjustmentInvoice(null);
+        }}
+        invoice={adjustmentInvoice}
+        account={activeAccount}
+        onComplete={handleAdjustmentComplete}
+      />
     </>
   );
 }

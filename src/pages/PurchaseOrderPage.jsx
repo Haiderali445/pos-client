@@ -42,7 +42,14 @@ import {
 } from "@ant-design/icons";
 import { usePrintInvoice } from "../hooks/usePrintInvoice";
 import DefaultLayout from "../components/Defaultlayouts";
-import { useAccounts, useCheckoutMutation, useProducts } from "../hooks/usePosQueries";
+import {
+  useAccounts,
+  useBills,
+  useCheckoutMutation,
+  useGoodsReceiptMutation,
+  useGoodsReceipts,
+  useProducts,
+} from "../hooks/usePosQueries";
 import { useTenantSettings } from "../hooks/useTenantSettings";
 import PurchaseOrderTemplate from "../templates/PurchaseOrderTemplate";
 import "../styles/Pos.css";
@@ -56,7 +63,10 @@ export default function PurchaseOrderPage() {
   const { data: suppliers = [], isLoading: loadingSuppliers } = useAccounts({
     accountType: "Supplier",
   });
+  const { data: bills = [] } = useBills();
+  const { data: goodsReceipts = [] } = useGoodsReceipts();
   const checkoutMutation = useCheckoutMutation();
+  const goodsReceiptMutation = useGoodsReceiptMutation();
 
   // Multi-step workflow state: 0 = Draft, 1 = Sent / Approved, 2 = GRN / Receive Stock
   const [currentStep, setCurrentStep] = useState(0);
@@ -66,6 +76,8 @@ export default function PurchaseOrderPage() {
   const [poItems, setPoItems] = useState([]);
   const [poNotes, setPoNotes] = useState("");
   const [poNumber, setPoNumber] = useState(`PO-${Date.now().toString().slice(-6)}`);
+  const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState("");
+  const [createdPurchaseInvoiceId, setCreatedPurchaseInvoiceId] = useState(null);
 
   // Receiving state
   const [receivingItems, setReceivingItems] = useState([]);
@@ -93,12 +105,38 @@ export default function PurchaseOrderPage() {
 
   // Calculate Receiving Total
   const grnTotal = useMemo(() => {
-    const itemsTotal = receivingItems.reduce(
+    return Number(receivingItems.reduce(
       (sum, item) => sum + (Number(item.receivedQty) || 0) * (Number(item.batchCost) || 0),
       0
-    );
-    return Number((itemsTotal + Number(fare || 0)).toFixed(2));
-  }, [receivingItems, fare]);
+    ).toFixed(2));
+  }, [receivingItems]);
+
+  const purchaseInvoiceTotal = useMemo(
+    () => Number((poSubtotal + Number(fare || 0)).toFixed(2)),
+    [poSubtotal, fare]
+  );
+
+  const pendingPurchaseInvoices = useMemo(() => {
+    return bills.filter((bill) => {
+      if (bill.invoiceType !== "Purchase" || bill.status !== "completed") return false;
+      const receivedByProduct = new Map();
+      goodsReceipts
+        .filter((receipt) =>
+          receipt.status !== "voided" &&
+          String(receipt.purchaseInvoiceId?._id || receipt.purchaseInvoiceId) === String(bill._id)
+        )
+        .forEach((receipt) => {
+          (receipt.items || []).forEach((line) => {
+            const productId = String(line.productId);
+            receivedByProduct.set(productId, (receivedByProduct.get(productId) || 0) + Number(line.quantity || 0));
+          });
+        });
+      return (bill.cartItems || []).some((line) => {
+        const productId = String(line.productId || "");
+        return productId && Number(line.quantity || 0) - (receivedByProduct.get(productId) || 0) > 0.0005;
+      });
+    });
+  }, [bills, goodsReceipts]);
 
   // Add Item to Draft PO
   const handleAddItemToPO = (productId) => {
@@ -171,43 +209,105 @@ export default function PurchaseOrderPage() {
           `BATCH-${Date.now().toString().slice(-4)}-${Math.floor(10 + Math.random() * 90)}`,
       }))
     );
+    setCreatedPurchaseInvoiceId(null);
     setCurrentStep(2);
   };
 
-  // Step 3: Complete GRN / Receive Stock into FIFO batches
-  const handleFinalizeGRN = async () => {
-    try {
-      const cartItemsPayload = receivingItems.map((item) => ({
-        productId: item.productId,
-        name: item.name,
-        sku: item.sku,
-        barcode: item.barcode,
-        category: item.category,
-        quantity: Number(item.receivedQty),
-        unitCost: Number(item.batchCost),
-        purchasePrice: Number(item.batchCost),
-        batchCode: item.batchCode,
-      }));
+  const handleReceiveRemaining = (invoice) => {
+    const receivedByProduct = new Map();
+    goodsReceipts
+      .filter((receipt) =>
+        receipt.status !== "voided" &&
+        String(receipt.purchaseInvoiceId?._id || receipt.purchaseInvoiceId) === String(invoice._id)
+      )
+      .forEach((receipt) => {
+        (receipt.items || []).forEach((line) => {
+          const productId = String(line.productId);
+          receivedByProduct.set(productId, (receivedByProduct.get(productId) || 0) + Number(line.quantity || 0));
+        });
+      });
 
-      const payload = {
-        invoiceType: "Purchase",
-        invoiceNumber: poNumber,
-        accountId: selectedSupplierId,
-        costumerName: selectedSupplier?.name || "Supplier",
-        costumerNumber: selectedSupplier?.phone || "",
-        fare: Number(fare || 0),
-        totalDiscount: 0,
-        subtotal: grnTotal - Number(fare || 0),
-        totalAmount: grnTotal,
-        paidAmount: Number(paidAmount || 0),
-        paymentMethod,
-        cartItems: cartItemsPayload,
-        date: new Date().toISOString(),
+    const lines = (invoice.cartItems || []).map((line) => {
+      const productId = String(line.productId || line._id || "");
+      const remaining = Math.max(
+        0,
+        Number(line.quantity || 0) - (receivedByProduct.get(productId) || 0)
+      );
+      return {
+        productId,
+        name: line.name,
+        sku: line.sku || "",
+        currentStock: products.find((product) => String(product._id) === productId)?.stock || 0,
+        quantity: remaining,
+        receivedQty: remaining,
+        purchasePrice: Number(line.unitCost || line.purchasePrice || line.unitPrice || 0),
+        batchCost: Number(line.unitCost || line.purchasePrice || line.unitPrice || 0),
+        batchCode: `BATCH-${Date.now().toString().slice(-4)}-${Math.floor(10 + Math.random() * 90)}`,
       };
+    }).filter((line) => line.receivedQty > 0);
 
-      await checkoutMutation.mutateAsync(payload);
+    setSelectedSupplierId(invoice.accountId?._id || invoice.accountId || null);
+    setPoItems(lines);
+    setReceivingItems(lines);
+    setCreatedPurchaseInvoiceId(invoice._id);
+    setFare(0);
+    setPaidAmount(0);
+    setCurrentStep(2);
+  };
+
+  // Create the supplier invoice first; the GRN then posts only the received quantities to stock.
+  const handleFinalizeGRN = async () => {
+    let purchaseInvoiceId = createdPurchaseInvoiceId;
+    try {
+      if (!receivingItems.some((item) => Number(item.receivedQty) > 0)) {
+        message.error("Enter at least one received quantity greater than zero.");
+        return;
+      }
+      if (!purchaseInvoiceId) {
+        if (!supplierInvoiceNumber.trim()) {
+          message.error("Enter the supplier's invoice number before saving the purchase invoice.");
+          return;
+        }
+        const purchaseInvoice = await checkoutMutation.mutateAsync({
+          invoiceType: "Purchase",
+          invoiceNumber: supplierInvoiceNumber.trim(),
+          accountId: selectedSupplierId,
+          costumerName: selectedSupplier?.name || "Supplier",
+          costumerNumber: selectedSupplier?.phone || "",
+          fare: Number(fare || 0),
+          totalDiscount: 0,
+          paidAmount: Number(paidAmount || 0),
+          paymentMethod,
+          notes: poNotes,
+          cartItems: poItems.map((item) => ({
+            productId: item.productId,
+            name: item.name,
+            sku: item.sku,
+            barcode: item.barcode,
+            category: item.category,
+            quantity: Number(item.quantity),
+            unitCost: Number(item.purchasePrice),
+            purchasePrice: Number(item.purchasePrice),
+          })),
+          date: new Date().toISOString(),
+        });
+        purchaseInvoiceId = purchaseInvoice._id;
+        setCreatedPurchaseInvoiceId(purchaseInvoiceId);
+      }
+
+      const receipt = await goodsReceiptMutation.mutateAsync({
+        purchaseInvoiceId,
+        items: receivingItems
+          .filter((item) => Number(item.receivedQty) > 0)
+          .map((item) => ({
+            productId: item.productId,
+            quantity: Number(item.receivedQty),
+          })),
+        notes: poNotes,
+        date: new Date().toISOString(),
+      });
       message.success(
-        "Goods Received Note (GRN) completed! FIFO stock batches generated and supplier ledger updated."
+        `Purchase invoice and GRN ${receipt.grnNumber} saved. Stock was updated only for the received quantities.`
       );
 
       // Reset
@@ -215,8 +315,17 @@ export default function PurchaseOrderPage() {
       setPoItems([]);
       setReceivingItems([]);
       setPoNumber(`PO-${Date.now().toString().slice(-6)}`);
+      setSupplierInvoiceNumber("");
+      setCreatedPurchaseInvoiceId(null);
     } catch (err) {
-      message.error(err.response?.data?.error || err.message || "Failed to process stock intake");
+      if (purchaseInvoiceId && !createdPurchaseInvoiceId) {
+        setCreatedPurchaseInvoiceId(purchaseInvoiceId);
+      }
+      message.error(
+        purchaseInvoiceId
+          ? `Purchase invoice saved, but GRN failed: ${err.response?.data?.error || err.message}`
+          : err.response?.data?.error || err.message || "Failed to save purchase invoice"
+      );
     }
   };
 
@@ -239,7 +348,7 @@ export default function PurchaseOrderPage() {
               Procurement & FIFO Intake
             </span>
             <Title level={2} style={{ margin: 0, color: "#183c35" }}>
-              Purchase Orders & Goods Receiving (GRN)
+              Purchase Invoices & Goods Receiving (GRN)
             </Title>
           </div>
           <Tag color="blue" style={{ fontSize: 14, padding: "4px 12px", fontWeight: 700 }}>
@@ -253,18 +362,18 @@ export default function PurchaseOrderPage() {
             current={currentStep}
             items={[
               {
-                title: "1. Draft Order",
+                title: "1. Prepare Invoice",
                 description: "Select supplier & products",
                 icon: <SolutionOutlined />,
               },
               {
-                title: "2. Sent / Approved",
-                description: "Review & print PO",
+                title: "2. Review",
+                description: "Check supplier and quantities",
                 icon: <SendOutlined />,
               },
               {
-                title: "3. Goods Receiving (GRN)",
-                description: "Inspect & intake FIFO batches",
+                title: "3. Purchase Invoice & GRN",
+                description: "Record invoice, then stock receipt",
                 icon: <InboxOutlined />,
               },
             ]}
@@ -460,7 +569,7 @@ export default function PurchaseOrderPage() {
                   disabled={!selectedSupplierId || poItems.length === 0}
                   onClick={handleProceedToSent}
                 >
-                  Confirm & Finalize PO
+                  Continue to Invoice Review
                 </Button>
               </Card>
             </Col>
@@ -480,16 +589,16 @@ export default function PurchaseOrderPage() {
             >
               <div>
                 <Title level={4} style={{ margin: 0, color: "#183c35" }}>
-                  Purchase Order Ready for Dispatch
+                  Purchase Invoice Ready to Receive
                 </Title>
                 <Text type="secondary">
-                  Supplier: <strong>{selectedSupplier?.name}</strong> | PO Reference: <strong>{poNumber}</strong>
+                  Supplier: <strong>{selectedSupplier?.name}</strong> |                   Order reference: <strong>{poNumber}</strong>
                 </Text>
               </div>
               <Space>
                 <Button onClick={() => setCurrentStep(0)}>Back to Edit</Button>
                 <Button icon={<PrinterOutlined />} onClick={handlePrintPO}>
-                  Print Purchase Order
+                  Print Order Copy
                 </Button>
                 <Button
                   type="primary"
@@ -497,7 +606,7 @@ export default function PurchaseOrderPage() {
                   style={{ backgroundColor: "#183c35", borderColor: "#183c35" }}
                   onClick={handleProceedToGRN}
                 >
-                  Proceed to Receive Stock (GRN)
+                  Proceed to Goods Receipt (GRN)
                 </Button>
               </Space>
             </div>
@@ -589,14 +698,15 @@ export default function PurchaseOrderPage() {
                       width: 120,
                       render: (_, item) => (
                         <InputNumber
-                          min={1}
+                          min={0}
+                          max={item.quantity}
                           value={item.receivedQty}
                           onChange={(val) =>
                             setReceivingItems((prev) =>
                               prev.map((i) =>
                                 i.productId === item.productId
-                                  ? { ...i, receivedQty: Math.max(1, Number(val) || 1) }
-                                  : i
+                                ? { ...i, receivedQty: Math.min(i.quantity, Math.max(0, Number(val) || 0)) }
+                                : i
                               )
                             )
                           }
@@ -605,26 +715,10 @@ export default function PurchaseOrderPage() {
                       ),
                     },
                     {
-                      title: "Actual Batch Cost (PKR)",
+                      title: "Invoice Unit Cost",
                       key: "batchCost",
                       width: 140,
-                      render: (_, item) => (
-                        <InputNumber
-                          min={0}
-                          precision={2}
-                          value={item.batchCost}
-                          onChange={(val) =>
-                            setReceivingItems((prev) =>
-                              prev.map((i) =>
-                                i.productId === item.productId
-                                  ? { ...i, batchCost: Math.max(0, Number(val) || 0) }
-                                  : i
-                              )
-                            )
-                          }
-                          style={{ width: 110 }}
-                        />
-                      ),
+                      render: (_, item) => `PKR ${Number(item.batchCost || 0).toFixed(2)}`,
                     },
                     {
                       title: "Batch Total",
@@ -641,9 +735,36 @@ export default function PurchaseOrderPage() {
             <Col xs={24} lg={8}>
               <Card
                 bordered={false}
-                title={<span style={{ color: "#183c35", fontWeight: 700 }}>Settlement & Freight</span>}
+                title={
+                  <span style={{ color: "#183c35", fontWeight: 700 }}>
+                    {createdPurchaseInvoiceId ? "Goods Receipt" : "Supplier Invoice"}
+                  </span>
+                }
                 style={{ borderRadius: 10 }}
               >
+                {createdPurchaseInvoiceId ? (
+                  <Alert
+                    type="info"
+                    showIcon
+                    message="This purchase invoice is already recorded"
+                    description="Saving this GRN will only add the received quantities to stock. It will not create another invoice or change the supplier balance."
+                    style={{ marginBottom: 16 }}
+                  />
+                ) : (
+                  <div style={{ marginBottom: 16 }}>
+                    <Text strong style={{ display: "block", marginBottom: 6 }}>
+                      Supplier invoice number:
+                    </Text>
+                    <Input
+                      value={supplierInvoiceNumber}
+                      onChange={(event) => setSupplierInvoiceNumber(event.target.value)}
+                      placeholder="Enter the number printed on the supplier's invoice"
+                    />
+                  </div>
+                )}
+
+                {!createdPurchaseInvoiceId && (
+                <>
                 <div style={{ marginBottom: 16 }}>
                   <Text strong style={{ display: "block", marginBottom: 6 }}>
                     Transport Fare / Loader Charges:
@@ -669,7 +790,7 @@ export default function PurchaseOrderPage() {
                       if (e.target.value === "borrow") {
                         setPaidAmount(0);
                       } else {
-                        setPaidAmount(grnTotal);
+                        setPaidAmount(purchaseInvoiceTotal);
                       }
                     }}
                     optionType="button"
@@ -690,10 +811,11 @@ export default function PurchaseOrderPage() {
 
                 <div style={{ marginBottom: 16 }}>
                   <Text strong style={{ display: "block", marginBottom: 6 }}>
-                    Amount Paid at Receiving:
+                    Amount Paid on Invoice:
                   </Text>
                   <InputNumber
                     min={0}
+                    max={purchaseInvoiceTotal}
                     precision={2}
                     value={paidAmount}
                     onChange={(val) => setPaidAmount(Number(val) || 0)}
@@ -712,17 +834,38 @@ export default function PurchaseOrderPage() {
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Grand Intake Total:</span>
+                    <span>Purchase invoice total:</span>
                     <strong style={{ color: "#f2c14e", fontSize: 20 }}>
-                      PKR {grnTotal.toFixed(2)}
+                      PKR {purchaseInvoiceTotal.toFixed(2)}
                     </strong>
                   </div>
-                  {grnTotal - paidAmount > 0 && (
+                  {purchaseInvoiceTotal - paidAmount > 0 && (
                     <div style={{ fontSize: 12, color: "#fca5a5", marginTop: 4 }}>
-                      Supplier Khata Payable Increase: PKR {(grnTotal - paidAmount).toFixed(2)}
+                      Amount still owed: PKR {(purchaseInvoiceTotal - paidAmount).toFixed(2)}
                     </div>
                   )}
                 </div>
+                </>
+                )}
+
+                {createdPurchaseInvoiceId && (
+                  <div
+                    style={{
+                      backgroundColor: "#183c35",
+                      color: "#fff",
+                      padding: "14px 18px",
+                      borderRadius: 8,
+                      marginBottom: 16,
+                    }}
+                  >
+                    <div style={{ fontSize: 11, opacity: 0.8, textTransform: "uppercase" }}>
+                      Value of goods in this receipt
+                    </div>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: "#f2c14e" }}>
+                      PKR {grnTotal.toFixed(2)}
+                    </div>
+                  </div>
+                )}
 
                 <Space direction="vertical" style={{ width: "100%" }}>
                   <Button
@@ -730,11 +873,13 @@ export default function PurchaseOrderPage() {
                     size="large"
                     block
                     icon={<FileDoneOutlined />}
-                    loading={checkoutMutation.isPending}
+                    loading={checkoutMutation.isPending || goodsReceiptMutation.isPending}
                     style={{ backgroundColor: "#2d8a55", borderColor: "#2d8a55", fontWeight: 700 }}
                     onClick={handleFinalizeGRN}
                   >
-                    Accept Shipment & Intake Stock
+                    {createdPurchaseInvoiceId
+                      ? "Save GRN & Receive Stock"
+                      : "Save Purchase Invoice & GRN"}
                   </Button>
                   <Button block onClick={() => setCurrentStep(1)}>
                     Back to Approved PO
@@ -744,6 +889,110 @@ export default function PurchaseOrderPage() {
             </Col>
           </Row>
         )}
+
+        <Card
+          bordered={false}
+          title={<span style={{ color: "#183c35", fontWeight: 700 }}>Purchase invoices awaiting stock receipt</span>}
+          style={{ borderRadius: 10, marginTop: 24 }}
+        >
+          <Table
+            rowKey="_id"
+            size="small"
+            dataSource={pendingPurchaseInvoices}
+            pagination={{ pageSize: 5 }}
+            locale={{ emptyText: "No purchase invoices are waiting for stock." }}
+            columns={[
+              {
+                title: "Supplier invoice number",
+                dataIndex: "invoiceNumber",
+                key: "invoiceNumber",
+              },
+              {
+                title: "Supplier",
+                dataIndex: "costumerName",
+                key: "supplier",
+              },
+              {
+                title: "Invoice total",
+                dataIndex: "totalAmount",
+                key: "totalAmount",
+                align: "right",
+                render: (value) => `PKR ${Number(value || 0).toFixed(2)}`,
+              },
+              {
+                title: "Action",
+                key: "action",
+                align: "right",
+                render: (_, invoice) => (
+                  <Button
+                    size="small"
+                    icon={<InboxOutlined />}
+                    onClick={() => handleReceiveRemaining(invoice)}
+                  >
+                    Receive remaining stock
+                  </Button>
+                ),
+              },
+            ]}
+          />
+        </Card>
+        <Card
+          bordered={false}
+          title={<span style={{ color: "#183c35", fontWeight: 700 }}>Goods receipts (GRNs)</span>}
+          style={{ borderRadius: 10, marginTop: 16 }}
+        >
+          <Table
+            rowKey="_id"
+            size="small"
+            dataSource={goodsReceipts}
+            pagination={{ pageSize: 5 }}
+            locale={{ emptyText: "No goods receipts have been recorded." }}
+            columns={[
+              {
+                title: "GRN number",
+                dataIndex: "grnNumber",
+                key: "grnNumber",
+              },
+              {
+                title: "Status",
+                dataIndex: "status",
+                key: "status",
+                render: (status) => (
+                  <Tag color={status === "voided" ? "red" : "green"}>
+                    {status === "voided" ? "Voided" : "Completed"}
+                  </Tag>
+                ),
+              },
+              {
+                title: "Supplier invoice",
+                key: "invoiceNumber",
+                render: (_, receipt) => receipt.purchaseInvoiceId?.invoiceNumber || "—",
+              },
+              {
+                title: "Date",
+                dataIndex: "date",
+                key: "date",
+                render: (value) => value
+                  ? new Date(value).toLocaleDateString("en-PK")
+                  : "—",
+              },
+              {
+                title: "Items received",
+                key: "items",
+                align: "right",
+                render: (_, receipt) =>
+                  (receipt.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0),
+              },
+              {
+                title: "Value",
+                dataIndex: "totalCost",
+                key: "totalCost",
+                align: "right",
+                render: (value) => `PKR ${Number(value || 0).toFixed(2)}`,
+              },
+            ]}
+          />
+        </Card>
       </div>
     </DefaultLayout>
   );

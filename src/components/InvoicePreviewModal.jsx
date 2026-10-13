@@ -10,6 +10,7 @@ export default function InvoicePreviewModal({
   bill = {},
   tenant = {},
   defaultTemplate = "thermal80mm",
+  onCreateAdjustment,
 }) {
   const { printRef, printNow, generatePDF, isPrinting, selectedTemplate, setTemplate } =
     usePrintInvoice(defaultTemplate);
@@ -56,6 +57,11 @@ export default function InvoicePreviewModal({
         <Button key="close" onClick={onClose}>
           Close
         </Button>,
+        onCreateAdjustment && ["Sale", "Purchase"].includes(bill.invoiceType) ? (
+          <Button key="adjustment" onClick={() => onCreateAdjustment(bill)}>
+            Return / replace items
+          </Button>
+        ) : null,
         <Tooltip key="pdf-tip" title="Export invoice as PDF file">
           <Button
             key="pdf"

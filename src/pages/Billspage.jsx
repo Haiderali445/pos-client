@@ -40,6 +40,7 @@ import { useBillMutations, useBills } from "../hooks/usePosQueries";
 import usePermission from "../hooks/usePermission";
 import { useTenantSettings } from "../hooks/useTenantSettings";
 import InvoicePreviewModal from "../components/InvoicePreviewModal";
+import InvoiceAdjustmentModal from "../components/InvoiceAdjustmentModal";
 import AuditTrailDrawer from "../components/AuditTrailDrawer";
 import apiClient from "../api/client";
 import {
@@ -66,6 +67,7 @@ export default function Billspage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [viewModalVisible, setViewModalVisible] = useState(false);
+  const [adjustmentModalVisible, setAdjustmentModalVisible] = useState(false);
   const [auditDrawerOpen, setAuditDrawerOpen] = useState(false);
   const [form] = Form.useForm();
 
@@ -123,15 +125,22 @@ export default function Billspage() {
     }
   };
 
+  const openInvoiceAdjustment = (invoice) => {
+    setSelectedBill(invoice);
+    setEditModalVisible(false);
+    setViewModalVisible(false);
+    setAdjustmentModalVisible(true);
+  };
+
   const columns = [
     {
       title: "Invoice #",
-      dataIndex: "_id",
-      key: "_id",
+      dataIndex: "invoiceNumber",
+      key: "invoiceNumber",
       render: (id, record) => (
         <Space direction="vertical" size={2}>
           <Text code copyable style={{ fontWeight: 700, color: "#183c35" }}>
-            {id ? (String(id).startsWith("OFFLINE-") ? id.slice(-8).toUpperCase() : id.slice(-8).toUpperCase()) : "—"}
+            {id || record._id || "—"}
           </Text>
           {record.isOffline && record.syncStatus === "pending" && (
             <span
@@ -726,6 +735,14 @@ export default function Billspage() {
                   marginTop: 20,
                 }}
               >
+                {selectedBill?.status !== "voided" && selectedBill?.invoiceType !== "Payment" && (
+                  <Button
+                    icon={<DollarOutlined />}
+                    onClick={() => openInvoiceAdjustment(selectedBill)}
+                  >
+                    Return / replace / settle
+                  </Button>
+                )}
                 <Button onClick={() => setEditModalVisible(false)}>
                   Cancel
                 </Button>
@@ -752,6 +769,19 @@ export default function Billspage() {
           bill={selectedBill || {}}
           tenant={tenantSettings}
           defaultTemplate={tenantSettings?.receiptTemplate || "thermal80mm"}
+          onCreateAdjustment={openInvoiceAdjustment}
+        />
+
+        <InvoiceAdjustmentModal
+          open={adjustmentModalVisible}
+          onClose={() => setAdjustmentModalVisible(false)}
+          invoice={selectedBill}
+          onComplete={() => {
+            refetch();
+            setViewModalVisible(false);
+            setEditModalVisible(false);
+            setSelectedBill(null);
+          }}
         />
 
         {/* Audit Trail Drawer */}

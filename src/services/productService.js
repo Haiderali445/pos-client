@@ -93,6 +93,16 @@ export const productService = {
       return { success: true, offlineDeleted: true };
     }
   },
+
+  async getGoodsReceipts() {
+    const response = await apiClient.get("/items/grn");
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async receivePurchaseInvoice(payload) {
+    const response = await apiClient.post("/items/grn", payload);
+    return response.data;
+  },
 };
 
 export default productService;

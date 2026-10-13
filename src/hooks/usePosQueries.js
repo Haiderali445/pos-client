@@ -10,6 +10,7 @@ import {
 
 export const queryKeys = {
   products: ["products"],
+  goodsReceipts: ["goodsReceipts"],
   bills: ["bills"],
   dealers: ["dealers"],
   charges: ["charges"],
@@ -26,6 +27,26 @@ export function useProducts() {
     queryKey: queryKeys.products,
     queryFn: () => productService.getProducts(),
     staleTime: 1000 * 60 * 2, // 2 minutes
+  });
+}
+
+export function useGoodsReceipts() {
+  return useQuery({
+    queryKey: queryKeys.goodsReceipts,
+    queryFn: () => productService.getGoodsReceipts(),
+    staleTime: 1000 * 30,
+  });
+}
+
+export function useGoodsReceiptMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (payload) => productService.receivePurchaseInvoice(payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+      queryClient.invalidateQueries({ queryKey: queryKeys.goodsReceipts });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockAnalytics });
+    },
   });
 }
 
@@ -90,6 +111,41 @@ export function useBillMutations() {
   });
 
   return { editBill, deleteBill };
+}
+
+export function useAdjustmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ billId, ...payload }) => billService.createAdjustment(billId, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.products });
+      queryClient.invalidateQueries({ queryKey: queryKeys.bills });
+      queryClient.invalidateQueries({ queryKey: queryKeys.stockAnalytics });
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
+      if (variables.accountId) {
+        queryClient.invalidateQueries({
+          queryKey: [...queryKeys.accounts, "ledger", variables.accountId],
+        });
+      }
+    },
+  });
+}
+
+export function useAccountAdjustmentMutation() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ accountId, ...payload }) =>
+      accountService.recordBalanceAdjustment(accountId, payload),
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.accounts });
+      queryClient.invalidateQueries({
+        queryKey: [...queryKeys.accounts, "ledger", variables.accountId],
+      });
+      if (variables.relatedInvoiceId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.bills });
+      }
+    },
+  });
 }
 
 export function useCheckoutMutation() {

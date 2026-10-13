@@ -7,6 +7,14 @@ import posDb from "../db/posDatabase";
  * automatic offline queuing into IndexedDB and instant local stock decrement.
  */
 export const billService = {
+  async getBillById(billId) {
+    if (String(billId).startsWith("OFFLINE-")) {
+      return (await posDb.bills.get(String(billId))) || null;
+    }
+    const response = await apiClient.get(`/bill/${billId}`);
+    return response.data;
+  },
+
   async getBills() {
     let remoteBills = [];
     let isOfflineMode = false;
@@ -65,6 +73,11 @@ export const billService = {
 
   async editBill(payload) {
     const response = await apiClient.put("/bill/edit-bill", payload);
+    return response.data;
+  },
+
+  async createAdjustment(billId, payload) {
+    const response = await apiClient.post(`/bill/${billId}/adjustments`, payload);
     return response.data;
   },
 

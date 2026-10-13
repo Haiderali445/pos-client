@@ -12,11 +12,23 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
   const fmt = (n) => `${currency} ${Number(n || 0).toFixed(2)}`;
   const fmtDate = (d) => (d ? new Date(d).toLocaleDateString("en-PK", { day: "2-digit", month: "short", year: "numeric" }) : "-");
 
+  const isCustomer = account.accountType === "Customer";
   const totalBilled = transactions
-    .filter((t) => t.invoiceType === "Sale")
+    .filter((t) => t.invoiceType === (isCustomer ? "Sale" : "Purchase"))
     .reduce((sum, t) => sum + Number(t.totalAmount || 0), 0);
-  const totalPaid = transactions.reduce((sum, t) => sum + Number(t.paidAmount || 0), 0);
+  const totalPaid = transactions
+    .reduce(
+      (sum, t) =>
+        sum +
+        Number(t.invoiceType === "Payment" ? t.paidAmount || t.totalAmount || 0 : t.paidAmount || 0),
+      0
+    );
   const currentDebt = Number(account.currentBalance || 0);
+  const balanceLabel = currentDebt > 0
+    ? isCustomer ? "Customer owes you" : "You owe supplier"
+    : currentDebt < 0
+    ? isCustomer ? "Customer credit" : "Supplier advance"
+    : "All settled";
 
   return (
     <div
@@ -55,9 +67,9 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
         <div><strong>Code:</strong> {account.accountCode || "-"}</div>
         {account.phone && <div><strong>Phone:</strong> {account.phone}</div>}
         <div>
-          <strong>Current Debt / Due:</strong>{" "}
+          <strong>{balanceLabel}:</strong>{" "}
           <span style={{ fontWeight: 800, color: currentDebt > 0 ? "#cf1322" : "#2d8a55" }}>
-            {fmt(currentDebt)}
+            {fmt(Math.abs(currentDebt))}
           </span>
         </div>
       </div>
@@ -77,9 +89,9 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
             fontSize: 10,
           }}
         >
-          <span style={{ flex: 1.2 }}>Date / Ref</span>
-          <span style={{ flex: 1, textAlign: "right" }}>Debit (+)</span>
-          <span style={{ flex: 1, textAlign: "right" }}>Credit (-)</span>
+          <span style={{ flex: 1.4 }}>Date / Invoice</span>
+          <span style={{ flex: 1, textAlign: "right" }}>Amount</span>
+          <span style={{ flex: 1, textAlign: "right" }}>Paid</span>
         </div>
 
         {transactions.length === 0 ? (
@@ -87,11 +99,16 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
             No transaction records found.
           </div>
         ) : (
-          transactions.map((tx, idx) => {
+          transactions.map((tx) => {
             const isPayment = tx.invoiceType === "Payment";
-            const refNo = tx.invoiceNumber || (tx._id ? tx._id.slice(-6).toUpperCase() : `TX-${idx + 1}`);
-            const debit = !isPayment ? Number(tx.totalAmount || 0) : 0;
-            const credit = isPayment ? Number(tx.paidAmount || 0) : Number(tx.paidAmount || 0);
+            const type = isPayment
+              ? isCustomer ? "Payment received" : "Payment made"
+              : tx.invoiceType || (isCustomer ? "Sale" : "Purchase");
+            const invoice = tx.invoiceNumber || (tx.billId || tx.reference_id || "");
+            const amount = isPayment
+              ? Number(tx.paidAmount || tx.totalAmount || 0)
+              : Number(tx.totalAmount || 0);
+            const paid = Number(tx.paidAmount || 0);
 
             return (
               <div
@@ -104,17 +121,17 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
                   borderBottom: "1px dotted #ccc",
                 }}
               >
-                <div style={{ flex: 1.2, overflow: "hidden" }}>
+                <div style={{ flex: 1.4, overflow: "hidden" }}>
                   <div>{fmtDate(tx.date || tx.createdAt)}</div>
                   <div style={{ fontSize: 9, color: "#666" }}>
-                    {isPayment ? "Payment" : "Sale"} #{refNo}
+                    {type}{invoice ? ` · ${invoice}` : ""}
                   </div>
                 </div>
-                <div style={{ flex: 1, textAlign: "right", color: debit > 0 ? "#cf1322" : "#000" }}>
-                  {debit > 0 ? fmt(debit) : "-"}
+                <div style={{ flex: 1, textAlign: "right" }}>
+                  {fmt(amount)}
                 </div>
-                <div style={{ flex: 1, textAlign: "right", color: credit > 0 ? "#2d8a55" : "#000" }}>
-                  {credit > 0 ? fmt(credit) : "-"}
+                <div style={{ flex: 1, textAlign: "right", color: "#2d8a55" }}>
+                  {!isPayment && paid > 0 ? fmt(paid) : "-"}
                 </div>
               </div>
             );
@@ -125,11 +142,11 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
       {/* Summary totals */}
       <div style={{ borderTop: "1px dashed #888", paddingTop: 6, textAlign: "right", fontSize: 11 }}>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span>Total Sales Billed:</span>
+          <span>{isCustomer ? "Total sales" : "Total purchases"}:</span>
           <span>{fmt(totalBilled)}</span>
         </div>
         <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span>Total Payments Made:</span>
+          <span>{isCustomer ? "Payments received" : "Payments made"}:</span>
           <span>{fmt(totalPaid)}</span>
         </div>
         <div
@@ -143,15 +160,15 @@ const KhataStatementTemplate = React.forwardRef(function KhataStatementTemplate(
             borderTop: "1px solid #000",
           }}
         >
-          <span>NET BALANCE DUE:</span>
+          <span>{balanceLabel}:</span>
           <span style={{ color: currentDebt > 0 ? "#cf1322" : "#2d8a55" }}>
-            {fmt(currentDebt)}
+            {fmt(Math.abs(currentDebt))}
           </span>
         </div>
       </div>
 
       <div style={{ marginTop: 16, fontSize: 10, color: "#555", textAlign: "center" }}>
-        *** Verified Customer Khata Ledger ***
+        *** Account Statement ***
       </div>
     </div>
   );

@@ -1,13 +1,13 @@
 import axios from "axios";
 
-// Fallback to Render URL in production builds if VITE_API_URL isn't explicitly set
+// Development requests go through Vite's /api proxy to the configured API server.
 const DEFAULT_API_URL =
   import.meta.env.MODE === "production"
     ? "https://pos-server-backend.onrender.com/api"
     : "/api";
 
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || DEFAULT_API_URL,
+  baseURL: import.meta.env.DEV ? "/api" : import.meta.env.VITE_API_URL || DEFAULT_API_URL,
   withCredentials: true,
   headers: {
     "Content-Type": "application/json",
